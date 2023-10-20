@@ -14,7 +14,8 @@ from external import calc_ssim, calc_psnr, build_rotation, densify, update_param
 
 def get_dataset(t, md, seq):
     dataset = []
-    for c in range(len(md['fn'][t])):  # md['fn'][t] is probabl the num of cameras at time t
+    for c in range(len(md['fn'][t])):  # md['fn'][t] is a list of the image paths at time t, e.g. [0/a.jpg, 3/a.jpg, ..] 
+                                       # meaning camera 0 -> image a.jpg, camera 3 -> image a.jpg, etc.
         w, h, k, w2c = md['w'], md['h'], md['k'][t][c], md['w2c'][t][c]
         cam = setup_camera(w, h, k, w2c, near=1.0, far=100)
         fn = md['fn'][t][c]
