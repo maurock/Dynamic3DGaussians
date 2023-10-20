@@ -14,7 +14,7 @@ from external import calc_ssim, calc_psnr, build_rotation, densify, update_param
 
 def get_dataset(t, md, seq):
     dataset = []
-    for c in range(len(md['fn'][t])):
+    for c in range(len(md['fn'][t])):  # md['fn'][t] is probabl the num of cameras at time t
         w, h, k, w2c = md['w'], md['h'], md['k'][t][c], md['w2c'][t][c]
         cam = setup_camera(w, h, k, w2c, near=1.0, far=100)
         fn = md['fn'][t][c]
@@ -35,14 +35,20 @@ def get_batch(todo_dataset, dataset):
 
 
 def initialize_params(seq, md):
+    """
+    Params:
+        seq: name of the data sequence, e.g. "basketball"
+        md: metadata
+    """
     init_pt_cld = np.load(f"./data/{seq}/init_pt_cld.npz")["data"]
-    seg = init_pt_cld[:, 6]
+    seg = init_pt_cld[:, 6]   # segmented, e.g. [0, 0, 1, 1, 1 ..]
     max_cams = 50
     sq_dist, _ = o3d_knn(init_pt_cld[:, :3], 3)
     mean3_sq_dist = sq_dist.mean(-1).clip(min=0.0000001)
+    # params are updated with gradient descent
     params = {
-        'means3D': init_pt_cld[:, :3],
-        'rgb_colors': init_pt_cld[:, 3:6],
+        'means3D': init_pt_cld[:, :3],    # (num_gaussians, 3)
+        'rgb_colors': init_pt_cld[:, 3:6],    # (num_gaussians, 3)
         'seg_colors': np.stack((seg, np.zeros_like(seg), 1 - seg), -1),
         'unnorm_rotations': np.tile([1, 0, 0, 0], (seg.shape[0], 1)),
         'logit_opacities': np.zeros((seg.shape[0], 1)),
@@ -54,6 +60,7 @@ def initialize_params(seq, md):
               params.items()}
     cam_centers = np.linalg.inv(md['w2c'][0])[:, :3, 3]  # Get scene radius
     scene_radius = 1.1 * np.max(np.linalg.norm(cam_centers - np.mean(cam_centers, 0)[None], axis=-1))
+    # variables are NOT updated with gradient descent
     variables = {'max_2D_radius': torch.zeros(params['means3D'].shape[0]).cuda().float(),
                  'scene_radius': scene_radius,
                  'means2D_gradient_accum': torch.zeros(params['means3D'].shape[0]).cuda().float(),
@@ -131,7 +138,9 @@ def get_loss(params, curr_data, variables, is_initial_timestep):
 def initialize_per_timestep(params, variables, optimizer):
     pts = params['means3D']
     rot = torch.nn.functional.normalize(params['unnorm_rotations'])
-    new_pts = pts + (pts - variables["prev_pts"])
+    new_pts = pts + (pts - variables["prev_pts"])   # smart way to initialise: new initial position
+                                                    # is the previous position + the difference between
+                                                    # the previous position and the position before that
     new_rot = torch.nn.functional.normalize(rot + (rot - variables["prev_rot"]))
 
     is_fg = params['seg_colors'][:, 0] > 0.5
@@ -193,7 +202,7 @@ def train(seq, exp):
     params, variables = initialize_params(seq, md)
     optimizer = initialize_optimizer(params, variables)
     output_params = []
-    for t in range(num_timesteps):
+    for t in range(num_timesteps):    # by changing this to 1, we train static scenes?
         dataset = get_dataset(t, md, seq)
         todo_dataset = []
         is_initial_timestep = (t == 0)
@@ -201,6 +210,7 @@ def train(seq, exp):
             params, variables = initialize_per_timestep(params, variables, optimizer)
         num_iter_per_timestep = 10000 if is_initial_timestep else 2000
         progress_bar = tqdm(range(num_iter_per_timestep), desc=f"timestep {t}")
+        # Actual training loop. Parameters are optimised here.
         for i in range(num_iter_per_timestep):
             curr_data = get_batch(todo_dataset, dataset)
             loss, variables = get_loss(params, curr_data, variables, is_initial_timestep)

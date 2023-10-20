@@ -32,12 +32,18 @@ def setup_camera(w, h, k, w2c, near=0.01, far=100):
 
 
 def params2rendervar(params):
+    """This converts the parameters to variables necessary for rendering.
+    Specifically:
+    - rotations are normalised
+    - opacities are processed by a sigmoid to be between [0, 1]
+    - scales are converted from log_scales    
+    """
     rendervar = {
         'means3D': params['means3D'],
         'colors_precomp': params['rgb_colors'],
         'rotations': torch.nn.functional.normalize(params['unnorm_rotations']),
         'opacities': torch.sigmoid(params['logit_opacities']),
-        'scales': torch.exp(params['log_scales']),
+        'scales': torch.exp(params['log_scales']),   # maybe because some gaussians are very big and some very small? 
         'means2D': torch.zeros_like(params['means3D'], requires_grad=True, device="cuda") + 0
     }
     return rendervar
