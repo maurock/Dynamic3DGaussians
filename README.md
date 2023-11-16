@@ -58,19 +58,19 @@ There is also a custom visualization codebase build using Open3D (used for the c
 Please let me know if there is anyway you think the code could be cleaner. 
 
 # Data making
-## Blender: known camera poses and ground truth point cloud
+## Blender: accurate camera poses and ground truth point cloud
 
-This repository contains two important scripts to extract data from Blender:
-- `data_making/blender_script.py`: **copy** this to Blender. This script extracts information about cameras in the scene + points on the object surface.
-- `data_making/blender_to_data.py`: run this after extracting data from Blender to structure your data in the correct format.
+This repository contains two important scripts for data extraction from Blender:
+- `data_making/blender_script.py`: **Copy** this to Blender. This script gathers details about the cameras in your 3D scene and points on the surface of your object(s).  
+- `data_making/blender_to_data.py`: Run this script post data extraction from Blender to structure your data in the correct format.
 
-Let's see how these two scripts work in detail.
+Below is an explanation of how these scripts work:
 ### `blender_script.py`
-- First, you need to create a scene in Blender:
+- Start by creating your object-centric scene in Blender:
 
 <img alt='Blender scene showing a red toaster on a green plane' src="images/blender_scene.png" width="500">
 
-- Copy the script to the text editor, set the parameters at the top of the script, and run it. This script generates N cameras uniformly placed on the surface of an hemisphere built around the object. All cameras point towards the object. **Important**: please set your paths to save the extracted data in the same folder, e.g.
+- Paste the script into Blender's text editor, set the parameters at the beginning of the script, and run it. This script generates N cameras, uniformly distributed on a hemisphere surrounding the object, with each camera oriented towards the object. **Important**: please ensure that your file paths to save the extracted data are in a unified directory, e.g.
 ```
 output_img_path = 'PROJECT_FOLDER/ims'
 output_poses_path = 'PROJECT_FOLDER/cameras_gt.json' 
@@ -80,13 +80,13 @@ output_point_path = 'PROJECT_FOLDER/init_pt_cld.npz'
 <img alt='Blender scene showing a red toaster on a green plane' src="images/cameras_blender.png" width="500">
 
 ### blender_to_data.py
-Simply run the script from your root directory. Set the arguments as required, e.g
+Simply run this script from your root directory. Configure the arguments as needed, e.g
 ```
 python blender_to_data.py --data_path Blender/PROJECT_FOLDER/ --output_path data/YOUR_DATASET
 ```
 
 ## Extract data using COLMAP
-TODO.
+Coming soon.
 
 ## Notes on license (original repo)
 The code in this repository (except in external.py) is licensed under the MIT licence.
