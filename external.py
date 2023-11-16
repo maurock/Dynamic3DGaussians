@@ -23,6 +23,7 @@ from math import exp
 
 
 def build_rotation(q):
+    """Quaternions to rotation matrix"""
     norm = torch.sqrt(q[:, 0] * q[:, 0] + q[:, 1] * q[:, 1] + q[:, 2] * q[:, 2] + q[:, 3] * q[:, 3])
     q = q / norm[:, None]
     rot = torch.zeros((q.size(0), 3, 3), device='cuda')
@@ -163,12 +164,13 @@ def inverse_sigmoid(x):
 
 
 def densify(params, variables, optimizer, i):
-    if i <= 5000:
+    if i <= 10000:
         variables = accumulate_mean2d_gradient(variables)
         grad_thresh = 0.0002
         if (i >= 500) and (i % 100 == 0):
             grads = variables['means2D_gradient_accum'] / variables['denom']
             grads[grads.isnan()] = 0.0
+            # Clone gaussians that A) have a gradient above the threshold OR B) are small
             to_clone = torch.logical_and(grads >= grad_thresh, (
                         torch.max(torch.exp(params['log_scales']), dim=1).values <= 0.01 * variables['scene_radius']))
             new_params = {k: v[to_clone] for k, v in params.items() if k not in ['cam_m', 'cam_c']}
@@ -198,6 +200,8 @@ def densify(params, variables, optimizer, i):
             params, variables = remove_points(to_remove, params, variables, optimizer)
 
             remove_threshold = 0.25 if i == 5000 else 0.005
+            #remove_threshold = 0.000005            
+                         
             to_remove = (torch.sigmoid(params['logit_opacities']) < remove_threshold).squeeze()
             if i >= 3000:
                 big_points_ws = torch.exp(params['log_scales']).max(dim=1).values > 0.1 * variables['scene_radius']
@@ -207,7 +211,7 @@ def densify(params, variables, optimizer, i):
             torch.cuda.empty_cache()
 
         if i > 0 and i % 3000 == 0:
+            # Resetting opacities to 0.01 (log = -.4.51)
             new_params = {'logit_opacities': inverse_sigmoid(torch.ones_like(params['logit_opacities']) * 0.01)}
             params = update_params_and_optimizer(new_params, params, optimizer)
-
     return params, variables

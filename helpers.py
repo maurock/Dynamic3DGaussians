@@ -97,12 +97,28 @@ def params2cpu(params, is_initial_timestep):
     return res
 
 
-def save_params(output_params, seq, exp):
-    to_save = {}
+def save_params_static(to_save, output_params, seq, exp):
+    """Use if I only have 1 timestamp"""
     for k in output_params[0].keys():
-        if k in output_params[1].keys():
-            to_save[k] = np.stack([params[k] for params in output_params])
+        # Increase dimensionality by 1 to account for timesteps
+        if k in ['means3D', 'rgb_colors', 'unnorm_rotations']:
+            to_save[k] = [output_params[0][k]]
         else:
             to_save[k] = output_params[0][k]
+
     os.makedirs(f"./output/{exp}/{seq}", exist_ok=True)
     np.savez(f"./output/{exp}/{seq}/params", **to_save)
+
+
+def save_params(output_params, seq, exp):
+    to_save = {}
+    if len(output_params) == 1:
+        save_params_static(to_save, output_params, seq, exp)
+    else:
+        for k in output_params[0].keys():
+            if k in output_params[1].keys():
+                to_save[k] = np.stack([params[k] for params in output_params])
+            else:
+                to_save[k] = output_params[0][k]
+        os.makedirs(f"./output/{exp}/{seq}", exist_ok=True)
+        np.savez(f"./output/{exp}/{seq}/params", **to_save)

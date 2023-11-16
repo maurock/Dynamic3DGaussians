@@ -13,11 +13,21 @@ from external import calc_ssim, calc_psnr, build_rotation, densify, update_param
 
 
 def get_dataset(t, md, seq):
+    """
+    A dataset is a list of dictionaries, every element in the list refers to a camera at current current timestep `t`. 
+    Example: 50 cameras -> `len(dataset) = 50`
+
+    The keys are: `dict_keys(['cam', 'im', 'seg', 'id'])`` 
+    - 'cam': obj of type GaussianRasterisationSetting
+    - 'im': torch.tensor, shape [3, height, width] 
+    - 'seg': torch.tensor, shape [3, height, width] 
+    - 'id': int of current camera id
+    """
     dataset = []
     for c in range(len(md['fn'][t])):  # md['fn'][t] is a list of the image paths at time t, e.g. [0/a.jpg, 3/a.jpg, ..] 
                                        # meaning camera 0 -> image a.jpg, camera 3 -> image a.jpg, etc.
         w, h, k, w2c = md['w'], md['h'], md['k'][t][c], md['w2c'][t][c]
-        cam = setup_camera(w, h, k, w2c, near=1.0, far=100)
+        cam = setup_camera(w, h, k, w2c, near=1.5, far=6)
         fn = md['fn'][t][c]
         im = np.array(copy.deepcopy(Image.open(f"./data/{seq}/ims/{fn}")))
         im = torch.tensor(im).float().cuda().permute(2, 0, 1) / 255
@@ -43,7 +53,7 @@ def initialize_params(seq, md):
     """
     init_pt_cld = np.load(f"./data/{seq}/init_pt_cld.npz")["data"]
     seg = init_pt_cld[:, 6]   # segmented, e.g. [0, 0, 1, 1, 1 ..]
-    max_cams = 50
+    max_cams = 1000
     sq_dist, _ = o3d_knn(init_pt_cld[:, :3], 3)
     mean3_sq_dist = sq_dist.mean(-1).clip(min=0.0000001)
     # params are updated with gradient descent
@@ -71,8 +81,8 @@ def initialize_params(seq, md):
 
 def initialize_optimizer(params, variables):
     lrs = {
-        'means3D': 0.00016 * variables['scene_radius'],
-        'rgb_colors': 0.0025,
+        'means3D': 0.0000016 * variables['scene_radius'], #0.00016 * variables['scene_radius'],
+        'rgb_colors': 0.00025, # 0.025,
         'seg_colors': 0.0,
         'unnorm_rotations': 0.001,
         'logit_opacities': 0.05,
@@ -98,7 +108,7 @@ def get_loss(params, curr_data, variables, is_initial_timestep):
     segrendervar = params2rendervar(params)
     segrendervar['colors_precomp'] = params['seg_colors']
     seg, _, _, = Renderer(raster_settings=curr_data['cam'])(**segrendervar)
-    losses['seg'] = 0.8 * l1_loss_v1(seg, curr_data['seg']) + 0.2 * (1.0 - calc_ssim(seg, curr_data['seg']))
+    losses['seg'] = 0 #0.8 * l1_loss_v1(seg, curr_data['seg']) + 0.2 * (1.0 - calc_ssim(seg, curr_data['seg']))
 
     if not is_initial_timestep:
         is_fg = (params['seg_colors'][:, 0] > 0.5).detach()
@@ -190,6 +200,7 @@ def report_progress(params, data, i, progress_bar, every_i=100):
         curr_id = data['id']
         im = torch.exp(params['cam_m'][curr_id])[:, None, None] * im + params['cam_c'][curr_id][:, None, None]
         psnr = calc_psnr(im, data['im']).mean()
+        
         progress_bar.set_postfix({"train img 0 PSNR": f"{psnr:.{7}f}"})
         progress_bar.update(every_i)
 
@@ -203,14 +214,16 @@ def train(seq, exp):
     params, variables = initialize_params(seq, md)
     optimizer = initialize_optimizer(params, variables)
     output_params = []
-    for t in range(num_timesteps):    # by changing this to 1, we train static scenes?
+
+    for t in range(num_timesteps):    
         dataset = get_dataset(t, md, seq)
         todo_dataset = []
         is_initial_timestep = (t == 0)
         if not is_initial_timestep:
             params, variables = initialize_per_timestep(params, variables, optimizer)
-        num_iter_per_timestep = 10000 if is_initial_timestep else 2000
+        num_iter_per_timestep = 15000 if is_initial_timestep else 2000
         progress_bar = tqdm(range(num_iter_per_timestep), desc=f"timestep {t}")
+
         # Actual training loop. Parameters are optimised here.
         for i in range(num_iter_per_timestep):
             curr_data = get_batch(todo_dataset, dataset)
@@ -222,6 +235,7 @@ def train(seq, exp):
                     params, variables = densify(params, variables, optimizer, i)
                 optimizer.step()
                 optimizer.zero_grad(set_to_none=True)
+
         progress_bar.close()
         output_params.append(params2cpu(params, is_initial_timestep))
         if is_initial_timestep:
@@ -231,6 +245,6 @@ def train(seq, exp):
 
 if __name__ == "__main__":
     exp_name = "exp1"
-    for sequence in ["basketball", "boxes", "football", "juggle", "softball", "tennis"]:
+    for sequence in ["toaster_gt"]:#["basketball", "boxes", "football", "juggle", "softball", "tennis"]:
         train(sequence, exp_name)
         torch.cuda.empty_cache()

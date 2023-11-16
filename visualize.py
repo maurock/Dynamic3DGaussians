@@ -8,24 +8,35 @@ from helpers import setup_camera, quat_mult
 from external import build_rotation
 from colormap import colormap
 from copy import deepcopy
+import os
+import data
+import json
 
-RENDER_MODE = 'color'  # 'color', 'depth' or 'centers'
-# RENDER_MODE = 'depth'  # 'color', 'depth' or 'centers'
+"""
+Visualiser. This method was modified from the original code for better interactivity.
+- Press 'C' to change camera
+- Press 'M' to change mode (color or depth)
+"""
+
+torch.cuda.empty_cache()
+
+# RENDER_MODE = 'color'  # 'color', 'depth' or 'centers'
+RENDER_MODE = 'colors'  # 'color', 'depth' or 'centers'
 # RENDER_MODE = 'centers'  # 'color', 'depth' or 'centers'
 
 ADDITIONAL_LINES = None  # None, 'trajectories' or 'rotations'
 # ADDITIONAL_LINES = 'trajectories'  # None, 'trajectories' or 'rotations'
 # ADDITIONAL_LINES = 'rotations'  # None, 'trajectories' or 'rotations'
 
-REMOVE_BACKGROUND = False  # False or True
-# REMOVE_BACKGROUND = True  # False or True
+# REMOVE_BACKGROUND = False  # False or True
+REMOVE_BACKGROUND = True  # False or True
 
 FORCE_LOOP = False  # False or True
 # FORCE_LOOP = True  # False or True
 
-w, h = 640, 360
-near, far = 0.01, 100.0
-view_scale = 3.9
+w, h = 640*2, 360*2
+near, far = 0.0001, 1000.0
+view_scale = 1 # 3.9
 fps = 20
 traj_frac = 25  # 4% of points
 traj_length = 15
@@ -115,8 +126,8 @@ def render(w2c, k, timestep_data):
 
 
 def rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None):
-    d_near = 1.5
-    d_far = 6
+    d_near = 0.1
+    d_far = 7
     invk = torch.inverse(torch.tensor(k).cuda().float())
     c2w = torch.inverse(torch.tensor(w2c).cuda().float())
     radial_depth = depth[0].reshape(-1)
@@ -137,15 +148,57 @@ def rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None):
     return pts, cols
 
 
+def change_camera(vis, camera_positions, camera_index):
+    if camera_index[0] < len(camera_positions) - 1:
+        camera_index[0] += 1
+    else:
+        camera_index[0] = 0
+
+    w2c, k = camera_positions[camera_index[0]]
+    cam_params = vis.get_view_control().convert_to_pinhole_camera_parameters()
+    cam_params.extrinsic = w2c
+    vis.get_view_control().convert_from_pinhole_camera_parameters(cam_params, allow_arbitrary=True)
+    print(camera_index)
+    return False
+
+def toggle_mode(vis, mode):
+    if mode[0] == 'colors':
+        mode[0] = 'depth'
+    elif mode[0] == 'depth':
+        mode[0] = 'colors'
+    vis.update_renderer()  # Update the renderer to reflect the new mode
+    return False
+
+
+def get_camera_positions(seq):
+    path = os.path.join(os.path.dirname(data.__file__), seq, 'train_meta.json')
+    with open(path, 'r') as file:
+        cameras = json.load(file)
+
+    camera_positions = []
+    for i in range(np.array(cameras["k"]).shape[1]):
+        k = np.array(cameras["k"])[0, i, :, :]
+        w2c = np.array(cameras["w2c"])[0, i, :, :]
+        camera_positions.append([w2c, k])
+    
+    return camera_positions
+
 def visualize(seq, exp):
     scene_data, is_fg = load_scene_data(seq, exp)
 
-    vis = o3d.visualization.Visualizer()
+    # With callback
+    vis = o3d.visualization.VisualizerWithKeyCallback()
     vis.create_window(width=int(w * view_scale), height=int(h * view_scale), visible=True)
+    camera_index = [0]
+    mode = [RENDER_MODE]
+    camera_positions = get_camera_positions(seq)
+    vis.register_key_callback(ord('C'), lambda vis: change_camera(vis, camera_positions, camera_index)) # Bind 'C' key to toggle camera
+    vis.register_key_callback(ord('M'), lambda vis: toggle_mode(vis, mode))  # Bind 'M' key to toggle mode
 
     w2c, k = init_camera()
+
     im, depth = render(w2c, k, scene_data[0])
-    init_pts, init_cols = rgbd2pcd(im, depth, w2c, k, show_depth=(RENDER_MODE == 'depth'))
+    init_pts, init_cols = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
     pcd = o3d.geometry.PointCloud()
     pcd.points = init_pts
     pcd.colors = init_cols
@@ -202,12 +255,12 @@ def visualize(seq, exp):
             k[2, 2] = 1
             w2c = cam_params.extrinsic
 
-        if RENDER_MODE == 'centers':
+        if mode[0] == 'centers':
             pts = o3d.utility.Vector3dVector(scene_data[t]['means3D'].contiguous().double().cpu().numpy())
             cols = o3d.utility.Vector3dVector(scene_data[t]['colors_precomp'].contiguous().double().cpu().numpy())
         else:
             im, depth = render(w2c, k, scene_data[t])
-            pts, cols = rgbd2pcd(im, depth, w2c, k, show_depth=(RENDER_MODE == 'depth'))
+            pts, cols = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
         pcd.points = pts
         pcd.colors = cols
         vis.update_geometry(pcd)
@@ -233,6 +286,6 @@ def visualize(seq, exp):
 
 
 if __name__ == "__main__":
-    exp_name = "pretrained"
-    for sequence in ["basketball"]: #, "boxes", "football", "juggle", "softball", "tennis"]:
+    exp_name = "exp1"
+    for sequence in ["toaster_gt"]: #, "boxes", "football", "juggle", "softball", "tennis"]:
         visualize(sequence, exp_name)
