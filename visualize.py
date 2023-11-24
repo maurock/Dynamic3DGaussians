@@ -11,6 +11,7 @@ from copy import deepcopy
 import os
 import data
 import json
+import matplotlib.cm as cm
 
 """
 Visualiser. This method was modified from the original code for better interactivity.
@@ -127,7 +128,7 @@ def render(w2c, k, timestep_data):
 
 def rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None):
     d_near = 0.1
-    d_far = 7
+    d_far = 5
     invk = torch.inverse(torch.tensor(k).cuda().float())
     c2w = torch.inverse(torch.tensor(w2c).cuda().float())
     radial_depth = depth[0].reshape(-1)
@@ -141,6 +142,7 @@ def rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None):
     pts = (c2w @ pts4.T).T[:, :3]
     if show_depth:
         cols = ((z_depth - d_near) / (d_far - d_near))[:, None].repeat(1, 3)
+
     else:
         cols = torch.permute(im, (1, 2, 0)).reshape(-1, 3)
     pts = o3d.utility.Vector3dVector(pts.contiguous().double().cpu().numpy())
@@ -260,7 +262,23 @@ def visualize(seq, exp):
             cols = o3d.utility.Vector3dVector(scene_data[t]['colors_precomp'].contiguous().double().cpu().numpy())
         else:
             im, depth = render(w2c, k, scene_data[t])
+
             pts, cols = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
+
+            # if mode[0] == 'depth':
+
+            #     # Reshape the depth map to 2D for applying the colormap
+            #     cols_array = np.asarray(cols, dtype=np.float32)
+
+            #     # Apply a colormap (let's use 'plasma' for this example)
+            #     colormap = cm.magma  # You can change this to cm.jet, cm.viridis, etc.
+            #     colored_depth_map_2d = colormap(cols_array[:,0].astype(np.float32).reshape(h, w))
+
+            #     # Now, discard the alpha channel and reshape back to original shape
+            #     colored_depth_map_1d = colored_depth_map_2d[:, :, :3].reshape((h*w, 3))
+
+            #     cols = o3d.utility.Vector3dVector(colored_depth_map_1d)
+        
         pcd.points = pts
         pcd.colors = cols
         vis.update_geometry(pcd)
@@ -287,5 +305,5 @@ def visualize(seq, exp):
 
 if __name__ == "__main__":
     exp_name = "exp1"
-    for sequence in ["toaster_gt"]: #, "boxes", "football", "juggle", "softball", "tennis"]:
+    for sequence in ["toaster_refl_gt2"]: #, "boxes", "football", "juggle", "softball", "tennis"]:
         visualize(sequence, exp_name)
