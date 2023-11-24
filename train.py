@@ -9,7 +9,78 @@ from tqdm import tqdm
 from diff_gaussian_rasterization import GaussianRasterizer as Renderer
 from helpers import setup_camera, l1_loss_v1, l1_loss_v2, weighted_l2_loss_v1, weighted_l2_loss_v2, quat_mult, \
     o3d_knn, params2rendervar, params2cpu, save_params
-from external import calc_ssim, calc_psnr, build_rotation, densify, update_params_and_optimizer
+from external import calc_ssim, calc_psnr, build_rotation, densify, update_params_and_optimizer, inverse_sigmoid
+from pytorch3d.loss import chamfer_distance
+
+def initialise_depth_gaussians(seq, md):
+    depth_pt_cld = np.load(f"./data/{seq}/depth_pt_cld.npz")['arr_0']
+
+    # seg set to 1 for depth gaussians
+    seg = np.ones(shape=(depth_pt_cld.shape[0])) # segmented, e.g. [0, 0, 1, 1, 1 ..]
+    # colours always set to grey
+    rgb = np.ones(shape=(depth_pt_cld.shape[0], 3)) * 0.5
+    # depth 1 for depth gaussians
+    depth = torch.ones(size=(depth_pt_cld.shape[0],)).cuda().float()
+
+    max_cams = 100
+    sq_dist, _ = o3d_knn(depth_pt_cld[:, :3], 3)
+    mean3_sq_dist = sq_dist.mean(-1).clip(min=0.0000001)
+    # params are updated with gradient descent
+    params = {
+        'means3D': depth_pt_cld,    # (num_gaussians, 3)
+        'rgb_colors': rgb,    # (num_gaussians, 3)
+        'seg_colors': np.stack((seg, np.zeros_like(seg), 1 - seg), -1),
+        'unnorm_rotations': np.tile([1, 0, 0, 0], (seg.shape[0], 1)),
+        'logit_opacities': np.array(inverse_sigmoid(torch.ones(size=(depth_pt_cld.shape[0], 1)) * 0.99999)),
+        'log_scales': np.tile(np.log(np.sqrt(mean3_sq_dist))[..., None], (1, 3)),
+        'cam_m': np.zeros((max_cams, 3)),
+        'cam_c': np.zeros((max_cams, 3)),
+
+    }
+    params = {k: torch.nn.Parameter(torch.tensor(v).cuda().float().contiguous().requires_grad_(True)) for k, v in params.items()}
+
+    cam_centers = np.linalg.inv(md['w2c'][0])[:, :3, 3]  # Get scene radius
+    scene_radius = 1.1 * np.max(np.linalg.norm(cam_centers - np.mean(cam_centers, 0)[None], axis=-1))
+    # variables are NOT updated with gradient descent
+    variables = {'max_2D_radius': torch.zeros(params['means3D'].shape[0]).cuda().float(),
+                 'scene_radius': scene_radius,
+                 'means2D_gradient_accum': torch.zeros(params['means3D'].shape[0]).cuda().float(),
+                 'denom': torch.zeros(params['means3D'].shape[0]).cuda().float(),
+                 'depth': depth
+                 }
+
+    depth_pt_cld = torch.tensor(depth_pt_cld).cuda().float()
+    
+    return params, variables, depth_pt_cld
+
+
+def combine_params_and_variables(params, params_depth, variables, variables_depth):
+    """
+    Combine the parameters and variables of the depth gaussians with the parameters and variables of the
+    normal gaussians.
+    """
+    params_combined = {}
+    variables_combined = {}
+    with torch.no_grad():
+        for key in params.keys():
+            if key in params_depth.keys():
+                params_combined[key] = torch.cat((params[key], params_depth[key]), dim=0)
+            else:
+                print(f"Key {key} not in params_depth.keys()")
+                params_combined[key] = params[key]
+        for key in variables.keys():
+            if key in variables_depth.keys() and key != "scene_radius":
+                variables_combined[key] = torch.cat((variables[key], variables_depth[key]), dim=0)
+            elif key == "scene_radius":
+                variables_combined[key] = variables[key]
+            else:
+                print(f"Key {key} not in params_depth.keys()")
+                variables_combined[key] = variables[key]
+
+    params_combined = {k: torch.nn.Parameter(v.clone().detach().cuda().float().contiguous().requires_grad_(True)) for k, v in
+            params_combined.items()}
+    
+    return params_combined, variables_combined
 
 
 def get_dataset(t, md, seq):
@@ -53,9 +124,11 @@ def initialize_params(seq, md):
     """
     init_pt_cld = np.load(f"./data/{seq}/init_pt_cld.npz")["data"]
     seg = init_pt_cld[:, 6]   # segmented, e.g. [0, 0, 1, 1, 1 ..]
-    max_cams = 1000
+    max_cams = 100
     sq_dist, _ = o3d_knn(init_pt_cld[:, :3], 3)
     mean3_sq_dist = sq_dist.mean(-1).clip(min=0.0000001)
+    # depth 0 for depth gaussians
+    depth = torch.zeros(size=(init_pt_cld.shape[0],)).cuda().float()
     # params are updated with gradient descent
     params = {
         'means3D': init_pt_cld[:, :3],    # (num_gaussians, 3)
@@ -75,7 +148,8 @@ def initialize_params(seq, md):
     variables = {'max_2D_radius': torch.zeros(params['means3D'].shape[0]).cuda().float(),
                  'scene_radius': scene_radius,
                  'means2D_gradient_accum': torch.zeros(params['means3D'].shape[0]).cuda().float(),
-                 'denom': torch.zeros(params['means3D'].shape[0]).cuda().float()}
+                 'denom': torch.zeros(params['means3D'].shape[0]).cuda().float(),
+                 'depth': depth}
     return params, variables
 
 
@@ -94,7 +168,7 @@ def initialize_optimizer(params, variables):
     return torch.optim.Adam(param_groups, lr=0.0, eps=1e-15)
 
 
-def get_loss(params, curr_data, variables, is_initial_timestep):
+def get_loss(params, curr_data, variables, is_initial_timestep, depth_pt_cld=None):
     losses = {}
 
     rendervar = params2rendervar(params)
@@ -109,6 +183,11 @@ def get_loss(params, curr_data, variables, is_initial_timestep):
     segrendervar['colors_precomp'] = params['seg_colors']
     seg, _, _, = Renderer(raster_settings=curr_data['cam'])(**segrendervar)
     losses['seg'] = 0 #0.8 * l1_loss_v1(seg, curr_data['seg']) + 0.2 * (1.0 - calc_ssim(seg, curr_data['seg']))
+    
+    # Add depth component to loss
+    indices_gaussians_depth = torch.nonzero(variables['depth'])[:, 0]
+    means_depth = params['means3D'][indices_gaussians_depth]
+    losses['depth'] = chamfer_distance(means_depth.unsqueeze(0), depth_pt_cld.unsqueeze(0))[0]
 
     if not is_initial_timestep:
         is_fg = (params['seg_colors'][:, 0] > 0.5).detach()
@@ -138,7 +217,7 @@ def get_loss(params, curr_data, variables, is_initial_timestep):
         losses['soft_col_cons'] = l1_loss_v2(params['rgb_colors'], variables["prev_col"])
 
     loss_weights = {'im': 1.0, 'seg': 3.0, 'rigid': 4.0, 'rot': 4.0, 'iso': 2.0, 'floor': 2.0, 'bg': 20.0,
-                    'soft_col_cons': 0.01}
+                    'soft_col_cons': 0.01, 'depth': 0.1}
     loss = sum([loss_weights[k] * v for k, v in losses.items()])
     seen = radius > 0
     variables['max_2D_radius'][seen] = torch.max(radius[seen], variables['max_2D_radius'][seen])
@@ -212,6 +291,13 @@ def train(seq, exp):
     md = json.load(open(f"./data/{seq}/train_meta.json", 'r'))  # metadata
     num_timesteps = len(md['fn'])
     params, variables = initialize_params(seq, md)
+    
+    # Params and variables for depth gaussians
+    params_depth, variables_depth, depth_pt_cld = initialise_depth_gaussians(seq, md)
+
+    # Combine params and variables for normal and depth gaussians
+    params, variables = combine_params_and_variables(params, params_depth, variables, variables_depth)
+
     optimizer = initialize_optimizer(params, variables)
     output_params = []
 
@@ -224,11 +310,27 @@ def train(seq, exp):
         num_iter_per_timestep = 15000 if is_initial_timestep else 2000
         progress_bar = tqdm(range(num_iter_per_timestep), desc=f"timestep {t}")
 
+        ####################
+        indices_gaussians_depth_old = 0
+        ##########3333#####
+
         # Actual training loop. Parameters are optimised here.
         for i in range(num_iter_per_timestep):
             curr_data = get_batch(todo_dataset, dataset)
-            loss, variables = get_loss(params, curr_data, variables, is_initial_timestep)
+            loss, variables = get_loss(params, curr_data, variables, is_initial_timestep, depth_pt_cld=depth_pt_cld)
             loss.backward()
+
+            # TODO improve efficiency: Opacity is not optimised for depth gaussians
+            indices_gaussians_depth = torch.nonzero(variables['depth'])[:, 0]
+            params['logit_opacities'].grad[indices_gaussians_depth] = 0.0
+
+
+            ####################
+            if indices_gaussians_depth.shape[0] != indices_gaussians_depth_old:
+                print(indices_gaussians_depth.shape[0])
+                indices_gaussians_depth_old = indices_gaussians_depth.shape[0]
+            ##########3333#####
+
             with torch.no_grad():
                 report_progress(params, dataset[0], i, progress_bar)
                 if is_initial_timestep:
@@ -245,6 +347,6 @@ def train(seq, exp):
 
 if __name__ == "__main__":
     exp_name = "exp1"
-    for sequence in ["toaster_gt"]:#["basketball", "boxes", "football", "juggle", "softball", "tennis"]:
+    for sequence in ["toaster_refl_gt2"]:#["basketball", "boxes", "football", "juggle", "softball", "tennis"]:
         train(sequence, exp_name)
         torch.cuda.empty_cache()

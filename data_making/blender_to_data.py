@@ -25,6 +25,8 @@ def main(args):
     # Copy images from bleder folder to data. Images need to be .JPEG.
     img_source_folder = os.path.join(args.data_path, 'ims')
     ims_folder = os.path.join(args.output_path, 'ims')
+    if not os.path.exists(ims_folder):
+        os.makedirs(ims_folder)
     img_source_files = glob(os.path.join(img_source_folder, '*', '*.jpg'))
     for img_source_file in img_source_files:
         num_cam = img_source_file.split('/')[-2]
@@ -76,7 +78,9 @@ if __name__=='__main__':
     args = argparse.ArgumentParser()
     args.add_argument('--data_path', type=str, default='', help='Path to the Blender data.')
     args.add_argument('--output_path', type=str, default='data/YOUR_DATASET', help='Path to the output data.')
-
     args = args.parse_args()
+    
+    args.data_path = '/home/mauro/Documents/BlenderProjects/Reflective_3DGS/toaster_refl_gt'
+    args.output_path = 'data/toaster_refl_gt'
 
     main(args)

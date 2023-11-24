@@ -11,7 +11,7 @@ def generate_seg_images(args, target_folder, num_cam, img_name):
     original_image = PIL_Image.open(os.path.join(target_folder, img_name))
     width, height = original_image.size
     black_image = PIL_Image.new('L', (width, height), 0)
-    seg_folder = os.path.join(args.output_path, args.dataset_name, 'seg')
+    seg_folder = os.path.join(args.output_path, 'seg')
     target_seg_folder = os.path.join(seg_folder, num_cam)
     if not os.path.exists(target_seg_folder):
         os.makedirs(target_seg_folder)

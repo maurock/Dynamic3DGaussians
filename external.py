@@ -128,6 +128,7 @@ def cat_params_to_optimizer(new_params, params, optimizer):
             stored_state["exp_avg"] = torch.cat((stored_state["exp_avg"], torch.zeros_like(v)), dim=0)
             stored_state["exp_avg_sq"] = torch.cat((stored_state["exp_avg_sq"], torch.zeros_like(v)), dim=0)
             del optimizer.state[group['params'][0]]
+            # Concatenate new parameters to existing ones
             group["params"][0] = torch.nn.Parameter(torch.cat((group["params"][0], v), dim=0).requires_grad_(True))
             optimizer.state[group['params'][0]] = stored_state
             params[k] = group["params"][0]
@@ -156,6 +157,7 @@ def remove_points(to_remove, params, variables, optimizer):
     variables['means2D_gradient_accum'] = variables['means2D_gradient_accum'][to_keep]
     variables['denom'] = variables['denom'][to_keep]
     variables['max_2D_radius'] = variables['max_2D_radius'][to_keep]
+    variables['depth'] = variables['depth'][to_keep]
     return params, variables
 
 
@@ -170,13 +172,18 @@ def densify(params, variables, optimizer, i):
         if (i >= 500) and (i % 100 == 0):
             grads = variables['means2D_gradient_accum'] / variables['denom']
             grads[grads.isnan()] = 0.0
-            # Clone gaussians that A) have a gradient above the threshold OR B) are small
+
+            # Clone gaussians that A) have a gradient above the threshold and B) are small
             to_clone = torch.logical_and(grads >= grad_thresh, (
                         torch.max(torch.exp(params['log_scales']), dim=1).values <= 0.01 * variables['scene_radius']))
             new_params = {k: v[to_clone] for k, v in params.items() if k not in ['cam_m', 'cam_c']}
             params = cat_params_to_optimizer(new_params, params, optimizer)
-            num_pts = params['means3D'].shape[0]
 
+            # Add depth to variables after cloning
+            variables['depth'] = torch.cat((variables['depth'], variables['depth'][to_clone]), dim=0)
+            
+            # Split gaussians that A) have a gradient above the threshold and B) are big
+            num_pts = params['means3D'].shape[0]
             padded_grad = torch.zeros(num_pts, device="cuda")
             padded_grad[:grads.shape[0]] = grads
             to_split = torch.logical_and(padded_grad >= grad_thresh,
@@ -193,9 +200,14 @@ def densify(params, variables, optimizer, i):
             params = cat_params_to_optimizer(new_params, params, optimizer)
             num_pts = params['means3D'].shape[0]
 
+            # Add depth to variables after splitting
+            variables['depth'] = torch.cat((variables['depth'], variables['depth'][to_split].repeat(n)), dim=0)
+
+            # Add new points (split and cloned) to variables
             variables['means2D_gradient_accum'] = torch.zeros(num_pts, device="cuda")
             variables['denom'] = torch.zeros(num_pts, device="cuda")
             variables['max_2D_radius'] = torch.zeros(num_pts, device="cuda")
+
             to_remove = torch.cat((to_split, torch.zeros(n * to_split.sum(), dtype=torch.bool, device="cuda")))
             params, variables = remove_points(to_remove, params, variables, optimizer)
 
@@ -213,5 +225,10 @@ def densify(params, variables, optimizer, i):
         if i > 0 and i % 3000 == 0:
             # Resetting opacities to 0.01 (log = -.4.51)
             new_params = {'logit_opacities': inverse_sigmoid(torch.ones_like(params['logit_opacities']) * 0.01)}
+            
+            # Resetting opacity back to 1 if gaussians is not a depth gaussian
+            index_gaussians_depth = torch.nonzero(variables['depth'])[:, 0]
+            new_params['logit_opacities'][index_gaussians_depth] = inverse_sigmoid(torch.ones_like(new_params['logit_opacities'][index_gaussians_depth]) * 0.99999)
+            
             params = update_params_and_optimizer(new_params, params, optimizer)
     return params, variables
