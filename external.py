@@ -165,8 +165,8 @@ def inverse_sigmoid(x):
     return torch.log(x / (1 - x))
 
 
-def densify(params, variables, optimizer, i):
-    if i <= 10000:
+def densify(params, variables, optimizer, i, explicit_depth):
+    if i <= 15000:
         variables = accumulate_mean2d_gradient(variables)
         grad_thresh = 0.0002
         if (i >= 500) and (i % 100 == 0):
@@ -227,8 +227,9 @@ def densify(params, variables, optimizer, i):
             new_params = {'logit_opacities': inverse_sigmoid(torch.ones_like(params['logit_opacities']) * 0.01)}
             
             # Resetting opacity back to 1 if gaussians is not a depth gaussian
-            index_gaussians_depth = torch.nonzero(variables['depth'])[:, 0]
-            new_params['logit_opacities'][index_gaussians_depth] = inverse_sigmoid(torch.ones_like(new_params['logit_opacities'][index_gaussians_depth]) * 0.99999)
+            if explicit_depth:
+                index_gaussians_depth = torch.nonzero(variables['depth'])[:, 0]
+                new_params['logit_opacities'][index_gaussians_depth] = inverse_sigmoid(torch.ones_like(new_params['logit_opacities'][index_gaussians_depth]) * 0.99999)
             
             params = update_params_and_optimizer(new_params, params, optimizer)
     return params, variables

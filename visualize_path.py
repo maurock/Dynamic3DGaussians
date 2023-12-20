@@ -251,7 +251,6 @@ def visualize(seq, exp):
 
         print(camera_index[0])
         if (camera_index[0] == 199) or (camera_index[0] == 299) or (camera_index[0] == 399) or (camera_index[0] == 499):
-            print('CIAO')
             print(camera_index[0])
             time.sleep(3)
 

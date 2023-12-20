@@ -8,13 +8,31 @@ from random import randint
 from tqdm import tqdm
 from diff_gaussian_rasterization import GaussianRasterizer as Renderer
 from helpers import setup_camera, l1_loss_v1, l1_loss_v2, weighted_l2_loss_v1, weighted_l2_loss_v2, quat_mult, \
-    o3d_knn, params2rendervar, params2cpu, save_params
+    o3d_knn, params2rendervar, params2cpu, save_params, save_variables
 from external import calc_ssim, calc_psnr, build_rotation, densify, update_params_and_optimizer, inverse_sigmoid
 from pytorch3d.loss import chamfer_distance
+import argparse
+from utils import utils_mesh, utils_gaussian
+import time
+
+import os
+# os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+# torch.autograd.set_detect_anomaly(True)
 
 def initialise_depth_gaussians(seq, md):
-    depth_pt_cld = np.load(f"./data/{seq}/depth_pt_cld.npz")['arr_0']
-
+    """
+    Generate gaussians for depth point cloud. Differently from standard Gaussians,
+    the 'depth' variable is set to 1.
+    Returns:
+        params: dict of parameters
+        variables: dict of variables
+        depth_pt_cld: torch tensor of depth point cloud, shape [N, 3]
+    """
+    try:
+        depth_pt_cld = np.load(f"./data/{seq}/depth_pt_cld.npz")['arr_0']
+    except:
+        print("No depth point cloud found. Exiting.")
+        exit()
     # seg set to 1 for depth gaussians
     seg = np.ones(shape=(depth_pt_cld.shape[0])) # segmented, e.g. [0, 0, 1, 1, 1 ..]
     # colours always set to grey
@@ -98,7 +116,7 @@ def get_dataset(t, md, seq):
     for c in range(len(md['fn'][t])):  # md['fn'][t] is a list of the image paths at time t, e.g. [0/a.jpg, 3/a.jpg, ..] 
                                        # meaning camera 0 -> image a.jpg, camera 3 -> image a.jpg, etc.
         w, h, k, w2c = md['w'], md['h'], md['k'][t][c], md['w2c'][t][c]
-        cam = setup_camera(w, h, k, w2c, near=1.5, far=6)
+        cam = setup_camera(w, h, k, w2c, near=0.01, far=100.0)
         fn = md['fn'][t][c]
         im = np.array(copy.deepcopy(Image.open(f"./data/{seq}/ims/{fn}")))
         im = torch.tensor(im).float().cuda().permute(2, 0, 1) / 255
@@ -168,7 +186,18 @@ def initialize_optimizer(params, variables):
     return torch.optim.Adam(param_groups, lr=0.0, eps=1e-15)
 
 
-def get_loss(params, curr_data, variables, is_initial_timestep, depth_pt_cld=None):
+def get_loss(
+        params, 
+        curr_data,
+        variables, 
+        is_initial_timestep, 
+        explicit_depth=False, 
+        depth_pt_cld=None, 
+        grad_depth=None,
+        density_mean=None,
+        transparency_mean=None,
+        grad_transparency=None,
+        finite_element_transparency=None):
     losses = {}
 
     rendervar = params2rendervar(params)
@@ -184,10 +213,28 @@ def get_loss(params, curr_data, variables, is_initial_timestep, depth_pt_cld=Non
     seg, _, _, = Renderer(raster_settings=curr_data['cam'])(**segrendervar)
     losses['seg'] = 0 #0.8 * l1_loss_v1(seg, curr_data['seg']) + 0.2 * (1.0 - calc_ssim(seg, curr_data['seg']))
     
-    # Add depth component to loss
-    indices_gaussians_depth = torch.nonzero(variables['depth'])[:, 0]
-    means_depth = params['means3D'][indices_gaussians_depth]
-    losses['depth'] = chamfer_distance(means_depth.unsqueeze(0), depth_pt_cld.unsqueeze(0))[0]
+    # Add depth component to loss if depth point cloud is available        
+    if explicit_depth:
+        indices_gaussians_depth = torch.nonzero(variables['depth'])[:, 0]
+        means_depth = params['means3D'][indices_gaussians_depth]
+
+        losses['depth'] = chamfer_distance(means_depth.unsqueeze(0), depth_pt_cld.unsqueeze(0))[0]
+
+    if grad_depth is not None:
+        losses['grad_depth'] = grad_depth
+
+
+    if density_mean is not None:
+        losses['density_mean'] = -density_mean
+
+    if transparency_mean is not None:
+        losses['transparency'] = transparency_mean
+
+    if grad_transparency is not None:
+        losses['grad_transparency'] = -grad_transparency
+    
+    if finite_element_transparency is not None:
+        losses['finite_element_transparency'] = -finite_element_transparency
 
     if not is_initial_timestep:
         is_fg = (params['seg_colors'][:, 0] > 0.5).detach()
@@ -217,8 +264,9 @@ def get_loss(params, curr_data, variables, is_initial_timestep, depth_pt_cld=Non
         losses['soft_col_cons'] = l1_loss_v2(params['rgb_colors'], variables["prev_col"])
 
     loss_weights = {'im': 1.0, 'seg': 3.0, 'rigid': 4.0, 'rot': 4.0, 'iso': 2.0, 'floor': 2.0, 'bg': 20.0,
-                    'soft_col_cons': 0.01, 'depth': 0.1}
+                    'soft_col_cons': 0.01, 'depth': 0.1, 'grad_depth': 0.00, 'density_mean': 0.01, 'transparency': 0.5, 'grad_transparency': 0.1, 'finite_element_transparency': 0.01}
     loss = sum([loss_weights[k] * v for k, v in losses.items()])
+    # print([f'{k}: {(loss_weights[k] * v):.6f}' for k, v in losses.items()])
     seen = radius > 0
     variables['max_2D_radius'][seen] = torch.max(radius[seen], variables['max_2D_radius'][seen])
     variables['seen'] = seen
@@ -284,7 +332,7 @@ def report_progress(params, data, i, progress_bar, every_i=100):
         progress_bar.update(every_i)
 
 
-def train(seq, exp):
+def train(seq, exp, args):
     if os.path.exists(f"./output/{exp}/{seq}"):
         print(f"Experiment '{exp}' for sequence '{seq}' already exists. Exiting.")
         return
@@ -293,10 +341,22 @@ def train(seq, exp):
     params, variables = initialize_params(seq, md)
     
     # Params and variables for depth gaussians
-    params_depth, variables_depth, depth_pt_cld = initialise_depth_gaussians(seq, md)
+    depth_pt_cld=None
+    transparency_mean = None
+    grad_transparency = None
+    finite_element_transparency = None
+    if args.explicit_depth or args.density or args.grad_depth or args.transparency or args.grad_transparency or args.finite_element_transparency:
+        params_depth, variables_depth, depth_pt_cld = initialise_depth_gaussians(seq, md)
 
-    # Combine params and variables for normal and depth gaussians
-    params, variables = combine_params_and_variables(params, params_depth, variables, variables_depth)
+        # Combine params and variables for normal and depth gaussians
+        params, variables = combine_params_and_variables(params, params_depth, variables, variables_depth)
+
+    grad_depth = None
+    density_mean = None
+    if args.grad_depth or args.grad_transparency or args.finite_element_transparency:
+        normals = utils_mesh.estimate_normals(depth_pt_cld)
+        # Debug normals by visualising them using plotly. Normals are visualised as vectors.
+        # utils_mesh._debug_normals(depth_pt_cld, normals)
 
     optimizer = initialize_optimizer(params, variables)
     output_params = []
@@ -310,31 +370,76 @@ def train(seq, exp):
         num_iter_per_timestep = 15000 if is_initial_timestep else 2000
         progress_bar = tqdm(range(num_iter_per_timestep), desc=f"timestep {t}")
 
-        ####################
-        indices_gaussians_depth_old = 0
-        ##########3333#####
-
         # Actual training loop. Parameters are optimised here.
         for i in range(num_iter_per_timestep):
             curr_data = get_batch(todo_dataset, dataset)
-            loss, variables = get_loss(params, curr_data, variables, is_initial_timestep, depth_pt_cld=depth_pt_cld)
+
+            if args.density:
+                density_mean = utils_gaussian.calculate_density(
+                    params,
+                    depth_pt_cld,
+                    variables
+                )
+
+            if args.grad_depth:
+                # Calculate density for depth gaussians
+                grad_depth = utils_gaussian.calculate_gradient(
+                    params, 
+                    depth_pt_cld,
+                    normals,
+                    variables,
+                    utils_gaussian.calculate_density_NN
+                )
+
+            if args.transparency:
+                transparency_mean = utils_gaussian.calculate_transparency(
+                    params,
+                    depth_pt_cld,
+                    variables
+                )
+
+            if args.grad_transparency:
+                grad_transparency = utils_gaussian.calculate_gradient(
+                    params, 
+                    depth_pt_cld,
+                    normals,
+                    variables,
+                    utils_gaussian.calculate_transparency
+                )
+
+            if args.finite_element_transparency:
+                finite_element_transparency = utils_gaussian.finite_element_transparency(
+                    params, 
+                    depth_pt_cld,
+                    normals,
+                    variables,
+                    utils_gaussian.calculate_transparency
+                )
+
+            loss, variables = get_loss(
+                params,
+                curr_data,
+                variables,
+                is_initial_timestep,
+                args.explicit_depth,
+                depth_pt_cld=depth_pt_cld,
+                grad_depth=grad_depth,
+                density_mean=density_mean,
+                transparency_mean=transparency_mean,
+                grad_transparency=grad_transparency,
+                finite_element_transparency=finite_element_transparency
+            )
             loss.backward()
 
-            # TODO improve efficiency: Opacity is not optimised for depth gaussians
-            indices_gaussians_depth = torch.nonzero(variables['depth'])[:, 0]
-            params['logit_opacities'].grad[indices_gaussians_depth] = 0.0
-
-
-            ####################
-            if indices_gaussians_depth.shape[0] != indices_gaussians_depth_old:
-                print(indices_gaussians_depth.shape[0])
-                indices_gaussians_depth_old = indices_gaussians_depth.shape[0]
-            ##########3333#####
+            if args.explicit_depth:
+                # TODO improve efficiency: Opacity is not optimised for depth gaussians
+                indices_gaussians_depth = torch.nonzero(variables['depth'])[:, 0]
+                params['logit_opacities'].grad[indices_gaussians_depth] = 0.0
 
             with torch.no_grad():
                 report_progress(params, dataset[0], i, progress_bar)
                 if is_initial_timestep:
-                    params, variables = densify(params, variables, optimizer, i)
+                    params, variables = densify(params, variables, optimizer, i, args.explicit_depth)
                 optimizer.step()
                 optimizer.zero_grad(set_to_none=True)
 
@@ -343,10 +448,41 @@ def train(seq, exp):
         if is_initial_timestep:
             variables = initialize_post_first_timestep(params, variables, optimizer)
     save_params(output_params, seq, exp)
+    save_variables(variables, seq, exp)
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--explicit_depth", default=False, action='store_true', help="Enforcing depth Gaussians directly."
+    )
+    parser.add_argument(
+        "--grad_depth", default=False, action='store_true', help="Maximise rate of change. Depth must be available."
+    )
+    parser.add_argument(
+        "--transparency", default=False, action='store_true', help="Maximise rate of change. Depth must be available."
+    )
+    parser.add_argument(
+        "--grad_transparency", default=False, action='store_true', help="Maximise rate of change. Depth must be available."
+    )
+    parser.add_argument(
+        "--density", default=False, action='store_true', help="Maximise rate of change. Depth must be available."
+    )
+    parser.add_argument(
+        "--finite_element_transparency", default=False, action='store_true', help="Maximise rate of change. Depth must be available."
+    )
+    args = parser.parse_args()
+
+    args.explicit_depth = False
+    args.grad_depth = False
+    args.transparency = True
+    args.grad_transparency = False
+    args.density = False
+    args.finite_element_transparency = True
+
+
+    
     exp_name = "exp1"
-    for sequence in ["toaster_refl_gt2"]:#["basketball", "boxes", "football", "juggle", "softball", "tennis"]:
-        train(sequence, exp_name)
+    for sequence in ["toaster_refl_transparency_FE"]:#["basketball", "boxes", "football", "juggle", "softball", "tennis"]:
+        train(sequence, exp_name, args)
         torch.cuda.empty_cache()

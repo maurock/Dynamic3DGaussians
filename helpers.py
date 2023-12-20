@@ -122,3 +122,11 @@ def save_params(output_params, seq, exp):
                 to_save[k] = output_params[0][k]
         os.makedirs(f"./output/{exp}/{seq}", exist_ok=True)
         np.savez(f"./output/{exp}/{seq}/params", **to_save)
+
+def save_variables(output_variables, seq, exp):
+    print('Saving variables. Only works for static scenes.')
+    to_save = {}
+    for k, v in output_variables.items():
+        to_save[k] = v.detach().cpu() if isinstance(v, torch.Tensor) else v
+    os.makedirs(f"./output/{exp}/{seq}", exist_ok=True)
+    np.savez(f"./output/{exp}/{seq}/variables", **to_save)

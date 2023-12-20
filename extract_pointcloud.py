@@ -12,6 +12,9 @@ import os
 import data
 import json
 import matplotlib.cm as cm
+import plotly.graph_objects as go
+import output
+
 
 """
 Visualiser. This method was modified from the original code for better interactivity.
@@ -45,16 +48,6 @@ def_pix = torch.tensor(
     np.stack(np.meshgrid(np.arange(w) + 0.5, np.arange(h) + 0.5, 1), -1).reshape(-1, 3)).cuda().float()
 pix_ones = torch.ones(h * w, 1).cuda().float()
 colormappa = cm.magma  # You can change this to cm.jet, cm.viridis, etc.
-
-
-def init_camera(y_angle=0., center_dist=10.0, cam_height=1.3, f_ratio=0.82):
-    ry = y_angle * np.pi / 180
-    w2c = np.array([[np.cos(ry), 0., -np.sin(ry), 0.],
-                    [0.,         1., 0.,          cam_height],
-                    [np.sin(ry), 0., np.cos(ry),  center_dist],
-                    [0.,         0., 0.,          1.]])
-    k = np.array([[f_ratio * w, 0, w / 2], [0, f_ratio * w, h / 2], [0, 0, 1]])
-    return w2c, k
 
 
 def load_scene_data(seq, exp, seg_as_col=False):
@@ -129,9 +122,10 @@ def render(w2c, k, timestep_data):
 
 def rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None):
     d_near = 2.0
-    d_far = 20.0
+    d_far = 15.0
     invk = torch.inverse(torch.tensor(k).cuda().float())
     c2w = torch.inverse(torch.tensor(w2c).cuda().float())
+    print(depth.shape)
     radial_depth = depth[0].reshape(-1)
     # def_rays is the unnormalised rays in the camera frame
     # x_2D = K @ x_3D, so x_3D = K^-1 @ x_2D. In this case, x_2D is pixels and x_3D is rays.
@@ -148,16 +142,48 @@ def rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None):
     pts = (c2w @ pts4.T).T[:, :3]
     if show_depth:
         cols = ((z_depth - d_near) / (d_far - d_near))[:, None].repeat(1, 3)
-
     else:
         cols = torch.permute(im, (1, 2, 0)).reshape(-1, 3)
-    pts = o3d.utility.Vector3dVector(pts.contiguous().double().cpu().numpy())
-    cols = o3d.utility.Vector3dVector(cols.contiguous().double().cpu().numpy())
 
-    return pts, cols
+    # Filter 
+    custom_mn = np.array([-1.2, -1.2, -1])
+    custom_mx = np.array([1.2, 1.2, 1])
+    pts = pts.contiguous().double().cpu().numpy()
+    cols = cols.contiguous().double().cpu().numpy()
+    mask = (pts < custom_mx).all(-1) & (pts > custom_mn).all(-1)
+    pts_masked = pts[mask]
+    cols_masked = cols[mask]
+
+    pts = o3d.utility.Vector3dVector(pts_masked)
+    cols = o3d.utility.Vector3dVector(cols_masked)
+
+    # return pts, cols
+
+    # Estimate normals
+    # Create a point cloud object
+
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = pts
+    pcd.colors = cols
+
+    # Estimate normals
+    pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+
+    # Flip normals to point outward
+    camera_location = np.array([0, 0, 0])  # Assuming camera at origin in its coordinate system
+    camera_location = np.dot(np.linalg.inv(w2c[:3, :3]), camera_location - w2c[:3, 3])  # Transform to world coordinates
+
+    for i, normal in enumerate(pcd.normals):
+        point = np.asarray(pcd.points)[i]
+        vector_to_camera = camera_location - point
+        dot_product = np.dot(normal, vector_to_camera)
+        if dot_product < 0:
+            pcd.normals[i] = -normal
+
+    return pcd.points, pcd.colors, pcd.normals
 
 
-def change_camera(vis, camera_positions, camera_index):
+def change_camera(vis, camera_positions, camera_index, pts_all, pts):
     if camera_index[0] < len(camera_positions) - 1:
         camera_index[0] += 1
     else:
@@ -167,23 +193,11 @@ def change_camera(vis, camera_positions, camera_index):
     cam_params = vis.get_view_control().convert_to_pinhole_camera_parameters()
     cam_params.extrinsic = w2c
     vis.get_view_control().convert_from_pinhole_camera_parameters(cam_params, allow_arbitrary=True)
-    print(camera_index)
-    return False
+    pts_all.append(np.asarray(pts))
 
-def toggle_mode(vis, mode):
-    if mode[0] == 'color':
-        mode[0] = 'depth'
-    elif mode[0] == 'depth':
-        mode[0] = 'color'
-    vis.update_renderer()  # Update the renderer to reflect the new mode
-    return False
+    return pts_all
 
-
-def get_camera_positions(seq):
-    path = os.path.join(os.path.dirname(data.__file__), seq, 'train_meta.json')
-    with open(path, 'r') as file:
-        cameras = json.load(file)
-
+def get_camera_positions(seq, cameras):
     camera_positions = []
     for i in range(np.array(cameras["k"]).shape[1]):
         k = np.array(cameras["k"])[0, i, :, :]
@@ -195,36 +209,23 @@ def get_camera_positions(seq):
 def visualize(seq, exp):
     scene_data, is_fg = load_scene_data(seq, exp)
 
+    path = os.path.join(os.path.dirname(data.__file__), seq, 'train_meta.json')
+    with open(path, 'r') as file:
+        cameras = json.load(file)
+
     # With callback
-    vis = o3d.visualization.VisualizerWithKeyCallback()
+    vis = o3d.visualization.Visualizer()
     vis.create_window(width=int(w * view_scale), height=int(h * view_scale), visible=True)
     camera_index = [0]
     mode = [RENDER_MODE]
-    camera_positions, k, w2c = get_camera_positions(seq)
-    vis.register_key_callback(ord('C'), lambda vis: change_camera(vis, camera_positions, camera_index)) # Bind 'C' key to toggle camera
-    vis.register_key_callback(ord('M'), lambda vis: toggle_mode(vis, mode))  # Bind 'M' key to toggle mode
-
-    # w2c, k = init_camera()
+    camera_positions, k, w2c = get_camera_positions(seq, cameras)
 
     im, depth = render(w2c, k, scene_data[0])
-    init_pts, init_cols = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
+    init_pts, init_cols, _ = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
     pcd = o3d.geometry.PointCloud()
     pcd.points = init_pts
     pcd.colors = init_cols
     vis.add_geometry(pcd)
-
-    linesets = None
-    lines = None
-    if ADDITIONAL_LINES is not None:
-        if ADDITIONAL_LINES == 'trajectories':
-            linesets = calculate_trajectories(scene_data, is_fg)
-        elif ADDITIONAL_LINES == 'rotations':
-            linesets = calculate_rot_vec(scene_data, is_fg)
-        lines = o3d.geometry.LineSet()
-        lines.points = linesets[0].points
-        lines.colors = linesets[0].colors
-        lines.lines = linesets[0].lines
-        vis.add_geometry(lines)
 
     view_k = k * view_scale
     view_k[2, 2] = 1
@@ -245,62 +246,30 @@ def visualize(seq, exp):
 
     # Accumulate all points for plotting
     pts_all = []
+    normals_all = []
 
-    while True:
+    for i in range(np.array(cameras["k"]).shape[1]):
         passed_time = time.time() - start_time
         passed_frames = passed_time * fps
-        if ADDITIONAL_LINES == 'trajectories':
-            t = int(passed_frames % (num_timesteps - traj_length)) + traj_length  # Skip t that don't have full traj.
-        else:
-            t = int(passed_frames % num_timesteps)
 
-        if FORCE_LOOP:
-            num_loops = 1.4
-            y_angle = 360*t*num_loops / num_timesteps
-            w2c, k = init_camera(y_angle)
-            cam_params = view_control.convert_to_pinhole_camera_parameters()
-            cam_params.extrinsic = w2c
-            view_control.convert_from_pinhole_camera_parameters(cam_params, allow_arbitrary=True)
-        else:  # Interactive control
-            cam_params = view_control.convert_to_pinhole_camera_parameters()
-            view_k = cam_params.intrinsic.intrinsic_matrix
-            k = view_k / view_scale
-            k[2, 2] = 1
-            w2c = cam_params.extrinsic
+        t = int(passed_frames % num_timesteps)
 
-        if mode[0] == 'centers':
-            pts = o3d.utility.Vector3dVector(scene_data[t]['means3D'].contiguous().double().cpu().numpy())
-            cols = o3d.utility.Vector3dVector(scene_data[t]['colors_precomp'].contiguous().double().cpu().numpy())
-        else:
-            im, depth = render(w2c, k, scene_data[t])
-            pts, cols = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
+        cam_params = view_control.convert_to_pinhole_camera_parameters()
+        view_k = cam_params.intrinsic.intrinsic_matrix
+        k = view_k / view_scale
+        k[2, 2] = 1
+        w2c = cam_params.extrinsic
 
-            # if mode[0] == 'depth':
-
-            #     # Reshape the depth map to 2D for applying the colormap
-            #     cols_array = np.asarray(cols, dtype=np.float32)[:,0].reshape(h, w)
-
-            #     # Apply a colormap (let's use 'plasma' for this example)
-            #     colored_depth_map_2d = colormappa(cols_array)
-
-            #     # Now, discard the alpha channel and reshape back to original shape
-            #     colored_depth_map_1d = colored_depth_map_2d[..., :3].reshape(-1, 3)
-
-            #     cols = o3d.utility.Vector3dVector(colored_depth_map_1d)
+        im, depth = render(w2c, k, scene_data[t])
+        pts, cols, normals = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
+        
+        # Accumulate all points for plotting
+        pts_all = change_camera(vis, camera_positions, camera_index, pts_all, pts)
+        normals_all.append(normals)
             
         pcd.points = pts
         pcd.colors = cols
         vis.update_geometry(pcd)
-
-        if ADDITIONAL_LINES is not None:
-            if ADDITIONAL_LINES == 'trajectories':
-                lt = t - traj_length
-            else:
-                lt = t
-            lines.points = linesets[lt].points
-            lines.colors = linesets[lt].colors
-            lines.lines = linesets[lt].lines
-            vis.update_geometry(lines)
 
         if not vis.poll_events():
             break
@@ -310,9 +279,65 @@ def visualize(seq, exp):
     del view_control
     del vis
     del render_options
+    
+    #### DEBUG
+    # Plot pts with plotly
+    pts_all = np.concatenate(pts_all, axis=0)
+    normals_all = np.concatenate(normals_all, axis=0)
+
+    custom_mn = np.array([-1.2, -1.2, -1])
+    custom_mx = np.array([1.2, 1.2, 1])
+    mask = (pts_all < custom_mx).all(-1) & (pts_all > custom_mn).all(-1)
+    pts_all = pts_all[mask]
+    normals_all = normals_all[mask]
+
+    # Reduce it to 10% of the points
+    # Shuffle the array
+    random_indices = np.random.choice(pts_all.shape[0], size=pts_all.shape[0], replace=False)
+    pts_all = pts_all[random_indices]
+    normals_all = normals_all[random_indices]
+
+    # Retain only 10% of the array
+    pts_all = pts_all[:int(0.05 * len(pts_all))]
+    normals_all = normals_all[:int(0.05 * len(normals_all))]
+
+    output_path = f"{os.path.dirname(output.__file__)}/{exp}/{seq}/{seq}.npy"
+    np.save(output_path, pts_all)
+
+    # fig = go.Figure(data=[go.Scatter3d(
+    #     x=pts_all[:,0],
+    #     y=pts_all[:,1],
+    #     z=pts_all[:,2],
+    #     mode='markers',
+    #     marker=dict(
+    #         size=2
+    #     )
+    # )])
+    # fig.add_trace(go.Cone(
+    #     x=pts_all[:, 0],
+    #     y=pts_all[:, 1],
+    #     z=pts_all[:, 2],
+    #     u=normals_all[:, 0],
+    #     v=normals_all[:, 1],
+    #     w=normals_all[:, 2],
+    #     sizemode="absolute",
+    #     sizeref=1,
+    #     anchor="tail"
+    # ))
+    # fig.show()
+    # ###
+
+    # pcd = o3d.geometry.PointCloud()
+    # pcd.points = o3d.utility.Vector3dVector(pts_all)
+    # pcd.normals = o3d.utility.Vector3dVector(normals_all)
+
+    # with o3d.utility.VerbosityContextManager(o3d.utility.VerbosityLevel.Debug) as cm:
+    #     mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
+    #         pcd, depth=9)
+    #     o3d.io.write_triangle_mesh('toaster_refl_transparency_FE.obj', mesh, compressed=True, print_progress=True)
 
 
 if __name__ == "__main__":
     exp_name = "exp1"
-    for sequence in ["toaster_refl_transparency_FE"]: #, "boxes", "football", "juggle", "softball", "tennis"]:
+    for sequence in ["toaster_refl_transparency_FE"]: #["toaster_refl", "toaster_refl_transparency", "toaster_refl_transparency_FE", "toaster_refl_FE"]: 
         visualize(sequence, exp_name)
