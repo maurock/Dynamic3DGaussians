@@ -264,7 +264,7 @@ def get_loss(
         losses['soft_col_cons'] = l1_loss_v2(params['rgb_colors'], variables["prev_col"])
 
     loss_weights = {'im': 1.0, 'seg': 3.0, 'rigid': 4.0, 'rot': 4.0, 'iso': 2.0, 'floor': 2.0, 'bg': 20.0,
-                    'soft_col_cons': 0.01, 'depth': 0.1, 'grad_depth': 0.00, 'density_mean': 0.01, 'transparency': 0.5, 'grad_transparency': 0.1, 'finite_element_transparency': 0.01}
+                    'soft_col_cons': 0.01, 'depth': 0.1, 'grad_depth': 0.00, 'density_mean': 0.01, 'transparency': 0.5, 'grad_transparency': 0.1, 'finite_element_transparency': 0.1}
     loss = sum([loss_weights[k] * v for k, v in losses.items()])
     # print([f'{k}: {(loss_weights[k] * v):.6f}' for k, v in losses.items()])
     seen = radius > 0
@@ -391,6 +391,7 @@ def train(seq, exp, args):
                     utils_gaussian.calculate_density_NN
                 )
 
+            transparency_mean = None
             if args.transparency:
                 transparency_mean = utils_gaussian.calculate_transparency(
                     params,
@@ -413,7 +414,8 @@ def train(seq, exp, args):
                     depth_pt_cld,
                     normals,
                     variables,
-                    utils_gaussian.calculate_transparency
+                    utils_gaussian.calculate_transparency,
+                    transparency_mean
                 )
 
             loss, variables = get_loss(
@@ -475,14 +477,14 @@ if __name__ == "__main__":
 
     args.explicit_depth = False
     args.grad_depth = False
-    args.transparency = True
+    args.transparency = False
     args.grad_transparency = False
     args.density = False
-    args.finite_element_transparency = True
+    args.finite_element_transparency = False
 
 
     
     exp_name = "exp1"
-    for sequence in ["toaster_refl_transparency_FE"]:#["basketball", "boxes", "football", "juggle", "softball", "tennis"]:
+    for sequence in ["coffee"]:#["basketball", "boxes", "football", "juggle", "softball", "tennis"]:
         train(sequence, exp_name, args)
         torch.cuda.empty_cache()

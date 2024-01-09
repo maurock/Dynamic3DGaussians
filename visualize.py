@@ -35,7 +35,7 @@ REMOVE_BACKGROUND = True  # False or True
 FORCE_LOOP = False  # False or True
 # FORCE_LOOP = True  # False or True
 
-w, h = 600, 400 #640*2, 360*2
+w, h = 1000, 1000 #640*2, 360*2
 near, far = 0.00001, 10000.0
 view_scale = 1 # 3.9
 fps = 20
@@ -44,7 +44,7 @@ traj_length = 15
 def_pix = torch.tensor(
     np.stack(np.meshgrid(np.arange(w) + 0.5, np.arange(h) + 0.5, 1), -1).reshape(-1, 3)).cuda().float()
 pix_ones = torch.ones(h * w, 1).cuda().float()
-colormappa = cm.magma  # You can change this to cm.jet, cm.viridis, etc.
+colormappa = cm.magma #cm.BuPu_r  # You can change this to cm.jet, cm.viridis, etc.
 
 
 def init_camera(y_angle=0., center_dist=10.0, cam_height=1.3, f_ratio=0.82):
@@ -129,7 +129,7 @@ def render(w2c, k, timestep_data):
 
 def rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None):
     d_near = 2.0
-    d_far = 20.0
+    d_far = 5.0
     invk = torch.inverse(torch.tensor(k).cuda().float())
     c2w = torch.inverse(torch.tensor(w2c).cuda().float())
     radial_depth = depth[0].reshape(-1)
@@ -147,8 +147,8 @@ def rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None):
     # pts is points in 3D world coords
     pts = (c2w @ pts4.T).T[:, :3]
     if show_depth:
+        print(np.amin(z_depth.cpu().numpy()), np.amax(z_depth.cpu().numpy()))
         cols = ((z_depth - d_near) / (d_far - d_near))[:, None].repeat(1, 3)
-
     else:
         cols = torch.permute(im, (1, 2, 0)).reshape(-1, 3)
     pts = o3d.utility.Vector3dVector(pts.contiguous().double().cpu().numpy())
@@ -180,7 +180,7 @@ def toggle_mode(vis, mode):
 
 
 def get_camera_positions(seq):
-    path = os.path.join(os.path.dirname(data.__file__), seq, 'train_meta.json')
+    path = os.path.join(os.path.dirname(data.__file__), seq, 'test_meta.json')
     with open(path, 'r') as file:
         cameras = json.load(file)
 
@@ -191,6 +191,26 @@ def get_camera_positions(seq):
         camera_positions.append([w2c, k])
     
     return camera_positions, k, w2c
+
+
+def zoom_out(vis, k):
+    # Modiy the intrinsic matrix to zoom in
+    k[0, 0] = k[0, 0] * 0.9
+    k[1, 1] = k[1, 1] * 0.9
+    cam_params = vis.get_view_control().convert_to_pinhole_camera_parameters()
+    cam_params.intrinsic.intrinsic_matrix = k
+    vis.get_view_control().convert_from_pinhole_camera_parameters(cam_params, allow_arbitrary=True)
+    return False
+
+def zoom_in(vis, k):
+    # Modiy the intrinsic matrix to zoom in
+    k[0, 0] = k[0, 0] * 1.1
+    k[1, 1] = k[1, 1] * 1.1
+    cam_params = vis.get_view_control().convert_to_pinhole_camera_parameters()
+    cam_params.intrinsic.intrinsic_matrix = k
+    vis.get_view_control().convert_from_pinhole_camera_parameters(cam_params, allow_arbitrary=True)
+    return False
+
 
 def visualize(seq, exp):
     scene_data, is_fg = load_scene_data(seq, exp)
@@ -267,6 +287,9 @@ def visualize(seq, exp):
             k = view_k / view_scale
             k[2, 2] = 1
             w2c = cam_params.extrinsic
+            
+            vis.register_key_callback(ord('W'), lambda vis: zoom_in(vis, k))  # Bind 'M' key to toggle mode
+            vis.register_key_callback(ord('S'), lambda vis: zoom_out(vis, k))  # Bind 'M' key to toggle mode
 
         if mode[0] == 'centers':
             pts = o3d.utility.Vector3dVector(scene_data[t]['means3D'].contiguous().double().cpu().numpy())
@@ -275,18 +298,19 @@ def visualize(seq, exp):
             im, depth = render(w2c, k, scene_data[t])
             pts, cols = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
 
-            # if mode[0] == 'depth':
+            if mode[0] == 'depth':
 
-            #     # Reshape the depth map to 2D for applying the colormap
-            #     cols_array = np.asarray(cols, dtype=np.float32)[:,0].reshape(h, w)
+                # Reshape the depth map to 2D for applying the colormap
+                cols_array = np.asarray(cols, dtype=np.float32)[:,0].reshape(h, w)
+                cols_array = np.clip(cols_array, 0, 1)
 
-            #     # Apply a colormap (let's use 'plasma' for this example)
-            #     colored_depth_map_2d = colormappa(cols_array)
+                # Apply a colormap (let's use 'plasma' for this example)
+                colored_depth_map_2d = colormappa(cols_array)
 
-            #     # Now, discard the alpha channel and reshape back to original shape
-            #     colored_depth_map_1d = colored_depth_map_2d[..., :3].reshape(-1, 3)
+                # Now, discard the alpha channel and reshape back to original shape
+                colored_depth_map_1d = colored_depth_map_2d[..., :3].reshape(-1, 3)
 
-            #     cols = o3d.utility.Vector3dVector(colored_depth_map_1d)
+                cols = o3d.utility.Vector3dVector(colored_depth_map_1d)
             
         pcd.points = pts
         pcd.colors = cols
@@ -314,5 +338,5 @@ def visualize(seq, exp):
 
 if __name__ == "__main__":
     exp_name = "exp1"
-    for sequence in ["toaster_refl_transparency_FE"]: #, "boxes", "football", "juggle", "softball", "tennis"]:
+    for sequence in ["toaster"]: #, "boxes", "football", "juggle", "softball", "tennis"]:
         visualize(sequence, exp_name)

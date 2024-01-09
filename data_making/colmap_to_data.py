@@ -86,7 +86,7 @@ def main(args):
             # Generate black images as everything is static currently. Images have the same size as the original images
             # Segmentation imaged need to be .PNG
             # TODO: change this to generate the segmentation images
-            utils_data_making.generate_seg_images(args, target_folder, num_cam, img_name)
+            utils_data_making.generate_seg_images(args.output_path, target_folder, num_cam, img_name)
             num_cam = str(eval(num_cam) + 1)
     else:
         # This is the case for images taken with a 3D renderer. Images are already in a folder per camera
@@ -101,7 +101,8 @@ def main(args):
             # Generate black images as everything is static currently. Images have the same size as the original images
             # Segmentation imaged need to be .PNG
             # TODO: change this to generate the segmentation images
-            utils_data_making.generate_seg_images(args, target_folder, num_cam, img_name='render.jpg')
+            utils_data_making.generate_seg_images(
+                args.output_path, target_folder, num_cam, img_name='render.jpg')
     
     # Generate init_pt_cld.npz: shape (N, 7) where N is the number of points
     pt_cld_path = os.path.join(args.colmap_path, 'sparse', '0', 'points3D.bin')

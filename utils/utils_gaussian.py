@@ -235,15 +235,18 @@ def calculate_transparency(
 
 
 # Define a function that computes the value and returns its gradient vector
-def finite_element_transparency(params, depth_pt_cld, normals, variables, f):
+def finite_element_transparency(params, depth_pt_cld, normals, variables, f, value_on):
     """Compute the gradient of the density function w.r.t. depth_pt_cld. Project the gradient onto the normals
     passing through the depth_pt_cld."""
 
     # With gradients ############################################
-    value_on = f(params, depth_pt_cld, variables)  # Transparency over the point cloud
-    x1 = depth_pt_cld + 0.001 * normals
+    if value_on is None:
+        value_on = f(params, depth_pt_cld, variables)
+    else:
+        value_on = value_on.clone()
+    x1 = depth_pt_cld + 0.01 * normals
     value_out = f(params, x1, variables) # Transparency over the point cloud + 0.001 * normals
     
     delta = value_out - value_on  # we want delta out-surface to be as high as possible
-
+            
     return delta

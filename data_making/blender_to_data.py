@@ -39,7 +39,7 @@ def main(args):
         # Generate black images as everything is static currently. Images have the same size as the original images
         # Segmentation imaged need to be .PNG
         # TODO: change this to generate real segmentation images
-        utils_data_making.generate_seg_images(args, target_folder, num_cam, img_name='render.jpg')
+        utils_data_making.generate_seg_images(args.output_path, target_folder, num_cam, img_name='render.jpg')
 
     # Copy point cloud from Blender folder to repository
     pc_source_folder = os.path.join(args.data_path, 'init_pt_cld.npz')
@@ -80,7 +80,7 @@ if __name__=='__main__':
     args.add_argument('--output_path', type=str, default='data/YOUR_DATASET', help='Path to the output data.')
     args = args.parse_args()
     
-    args.data_path = '/home/mauro/Documents/BlenderProjects/Reflective_3DGS/toaster_refl_gt'
-    args.output_path = 'data/toaster_refl_gt'
+    args.data_path = '/home/mauro/Documents/BlenderProjects/Reflective_3DGS/toaster_refl'
+    args.output_path = 'data/toaster_refl'
 
     main(args)

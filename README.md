@@ -1,15 +1,24 @@
-# Dynamic 3D Gaussians
-This repository is based on the brilliant [Dynamic 3D Gaussians:
-Tracking by Persistent Dynamic View Synthesis](https://dynamic3dgaussians.github.io/), which extends Gaussian Splatting to dynamic scenes, with accurate novel-view synthesis and dense 3D 6-DOF tracking.<br><br>
+# Depth-Aware Dynamic 3D Gaussians
+This repository extends [Dynamic 3D Gaussians:
+Tracking by Persistent Dynamic View Synthesis](https://dynamic3dgaussians.github.io/) to reconstruct challenging objects, including reflective and transparent materials. We introduce a method for incorporating explicit depth hints and evaluate it against state-of-the-art approaches. <br><br>
 
-Differently form the original code, this repository provides:
+Key additions to this repository include:
 - Code and intructions for data extraction using Blender. [Go to the instructions](#)
-- A better Visualiser tool, with interactive commands to iterate through known camera poses and change mode ('colors', 'depth').
-- Minor changes and addition of comments.
+- An upgraded Visualiser tool featuring interactive navigation through known camera poses, mode switching ('colors', 'depth'), and other enhancements.
+- Scripts for converting various datasets to the necessary format: [3DGS], [RefNeRF](https://dorverbin.github.io/refnerf/)
+- Minor changes and comments for clarity.
 
-Please consider citing the official implementation:
+Please consider citing our work and the original implementation if you find this repository helpful:
 
 ```
+@inproceedings{luiten2023dynamic,
+  title={Depth-Aware Dynamic 3D Gaussians},
+  author={Comi, Mauro and Tonioni, Alessio and Aitchison, Laurence and Lepora, Natahn F.},
+  year={2024},
+  publisher={GitHub},
+  journal={GitHub repository},
+  howpublished={\url{https://github.com/maurock/Dynamic3DGaussians}},
+}
 @inproceedings{luiten2023dynamic,
   title={Dynamic 3D Gaussians: Tracking by Persistent Dynamic View Synthesis},
   author={Luiten, Jonathon and Kopanas, Georgios and Leibe, Bastian and Ramanan, Deva},
@@ -61,7 +70,7 @@ Please let me know if there is anyway you think the code could be cleaner.
 ## Blender: accurate camera poses and ground truth point cloud
 
 This repository contains two important scripts for data extraction from Blender:
-- `data_making/blender_script.py`: **Copy** this to Blender. This script gathers details about the cameras in your 3D scene and points on the surface of your object(s).  
+- `data_making/blender_script.py`: **Copy** this to your Blender script. This script gathers details about the cameras in your 3D scene and points on the surface of your object(s).  
 - `data_making/blender_to_data.py`: Run this script post data extraction from Blender to structure your data in the correct format.
 
 Below is an explanation of how these scripts work:
@@ -87,6 +96,15 @@ python blender_to_data.py --data_path Blender/PROJECT_FOLDER/ --output_path data
 
 ## Extract data using COLMAP
 Coming soon.
+
+## RefNeRF
+The script .`data_making/refnerf_to_data.py` is included for converting the [RefNeRF](https://dorverbin.github.io/refnerf/) dataset, which contains data for shiny and reflective objects, to the format required by this repository. 
+Please follow these steps:
+- Download the **Shiny Dataset** from the official [RefNeRF project page](https://dorverbin.github.io/refnerf/).
+- Place the downloaded folder (`refnerf`) in the `data/` folder.
+- Run `python data_making/refnerf_to_data.py` to convert the data in the required format. This script also runs COLMAP with the known camera poses included in the RefNeRF. The converted data is stored in `data/`, e.g. `data/toaster`, ready to be used by the `train.py` script. Please note: local depth information is not extracted. Please follow the next steps for it.
+- **ADD INSTRUCTIONS TO EXTRACT DEPTH**
+
 
 ## Notes on license (original repo)
 The code in this repository (except in external.py) is licensed under the MIT licence.

@@ -166,7 +166,7 @@ def inverse_sigmoid(x):
 
 
 def densify(params, variables, optimizer, i, explicit_depth):
-    if i <= 15000:
+    if i <= 10000:
         variables = accumulate_mean2d_gradient(variables)
         grad_thresh = 0.0002
         if (i >= 500) and (i % 100 == 0):
