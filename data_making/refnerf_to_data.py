@@ -1,4 +1,9 @@
-"""Script to convert the data from the RefNeRF dataset to the format used by this codebase."""
+"""
+Script to convert the data from the RefNeRF dataset to the format used by this codebase.
+
+Author: Mauro Comi, mauro.comi@bristol.ac.uk
+Date: 28/07/2021
+"""
 import argparse
 import os
 import re
@@ -12,6 +17,7 @@ import data_making
 from copy import deepcopy
 from scipy.spatial.transform import Rotation as R
 import utils.utils_colmap as utils_colmap
+
 
 def create_dirs(dirs):
     """Create required directories if they do not already exist.

@@ -8,7 +8,7 @@ Key additions to this repository include:
 - Scripts for converting various datasets to the necessary format: [3DGS], [RefNeRF](https://dorverbin.github.io/refnerf/)
 - Minor changes and comments for clarity.
 
-Please consider citing our work and the original implementation if you find this repository helpful:
+If you find this helpful, please consider citing our work and the original implementation as suggested [here](#citation).
 
 ```
 @inproceedings{luiten2023dynamic,
@@ -98,12 +98,29 @@ python blender_to_data.py --data_path Blender/PROJECT_FOLDER/ --output_path data
 Coming soon.
 
 ## RefNeRF
+The RefNeRF dataset provided in the official implementation needs to be adapted to be processed by this repository. You can either download the adapted dataset or manually adapt it yourself by following the following instructions.
+
+### Download data (Recommended)
+You can download the RefNeRF dataset adapted for 3D Gaussian Splatting and local depths by running: 
+```
+bash download_data.sh [TODO]
+```
+Alternatively, you can manually adapt the RefNeRF dataset by following the instructions below.
+### Adapt dataset manually (Alternative)
+#### Camera poses, point clouds, and images 
 The script .`data_making/refnerf_to_data.py` is included for converting the [RefNeRF](https://dorverbin.github.io/refnerf/) dataset, which contains data for shiny and reflective objects, to the format required by this repository. 
 Please follow these steps:
 - Download the **Shiny Dataset** from the official [RefNeRF project page](https://dorverbin.github.io/refnerf/).
 - Place the downloaded folder (`refnerf`) in the `data/` folder.
 - Run `python data_making/refnerf_to_data.py` to convert the data in the required format. This script also runs COLMAP with the known camera poses included in the RefNeRF. The converted data is stored in `data/`, e.g. `data/toaster`, ready to be used by the `train.py` script. Please note: local depth information is not extracted. Please follow the next steps for it.
-- **ADD INSTRUCTIONS TO EXTRACT DEPTH**
+
+#### Local depths
+- Make sure you have `blender` installed on your system, so that you can run it via your command line. 
+- Download `refnerf-blend` from the RefNeRF repository and place it under `data/`. Then, from the root project simply run:
+```
+bash data/extract_obj_from_blend.sh
+```
+This script extracts `.obj` files from all the `.blend` files in `data/refnerf-blend` and places them in `data/refnerf-blend/obj`.
 
 
 ## Notes on license (original repo)
@@ -116,7 +133,17 @@ This requires express permission (licensing agreements) from Inria for use in an
 
 
 ## Citation
+If you find this helpful, please consider citing our work and the official implementation:
 ```
+@inproceedings{luiten2023dynamic,
+  title={Depth-Aware Dynamic 3D Gaussians},
+  author={Comi, Mauro and Tonioni, Alessio and Lepora, Nathan F. and Aitchison, Laurence},
+  year={2024},
+  publisher={GitHub},
+  journal={GitHub repository},
+  howpublished={\url{https://github.com/maurock/Dynamic3DGaussians}},
+}
+
 @inproceedings{luiten2023dynamic,
   title={Dynamic 3D Gaussians: Tracking by Persistent Dynamic View Synthesis},
   author={Luiten, Jonathon and Kopanas, Georgios and Leibe, Bastian and Ramanan, Deva},

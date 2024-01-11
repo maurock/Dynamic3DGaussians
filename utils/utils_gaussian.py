@@ -192,8 +192,6 @@ def calculate_gradient(params, depth_pt_cld, normals, variables, f):
     return grads_proj
 
 
-
-
 def calculate_transparency(
         params,
         depth_pt_cld,
@@ -250,3 +248,52 @@ def finite_element_transparency(params, depth_pt_cld, normals, variables, f, val
     delta = value_out - value_on  # we want delta out-surface to be as high as possible
             
     return delta
+
+
+# Define a function that computes the value and returns its gradient vector
+def finite_element_transparency_fast(params,
+        depth_pt_cld,
+        variables,
+        normals,
+        max_NN=10
+    ):
+    """Compute the gradient of the density function w.r.t. depth_pt_cld. Project the gradient onto the normals
+    passing through the depth_pt_cld."""
+
+    """Compute the transparency of the gaussians as the product of 1 - opacity for all gaussians"""
+
+    # Only consider depth gaussians
+    indices_gaussians_depth = torch.nonzero(variables['depth'])[:, 0]
+    logit_opacities = params['logit_opacities'][indices_gaussians_depth]
+    means3D = params['means3D'][indices_gaussians_depth]
+    log_scales = params['log_scales'][indices_gaussians_depth]
+    unnorm_rotations = params['unnorm_rotations'][indices_gaussians_depth]
+
+    covs = build_covariance_from_scaling_rotation(torch.exp(log_scales), 1, unnorm_rotations) # [N, 6]
+
+    # Join all depth point clouds
+    depth_pt_cld_out = depth_pt_cld + 0.01 * normals
+    depth_pt_cld_all = torch.cat((depth_pt_cld, depth_pt_cld_out), dim=0) # [2M, 3]
+
+    # Query per point-gaussian distances.
+    g_pts = depth_pt_cld_all.unsqueeze(1) - means3D.unsqueeze(0) # [2M, 1, 3] - [1, N, 3] = [2M, N, 3]
+    g_covs = covs.unsqueeze(0).repeat(depth_pt_cld_all.shape[0], 1, 1) # [2M, N, 6]
+
+    w = gaussian_3d_coeff(g_pts.reshape(-1, 3), g_covs.reshape(-1, 6)).reshape(depth_pt_cld_all.shape[0], -1) # [2MxN] -> [2M, N]
+    
+    if w.shape[1] > max_NN:
+
+        _, top_indices = torch.topk(w, max_NN, dim=1)
+        mask = torch.zeros_like(w).cuda()
+        mask.scatter_(1, top_indices, 1)
+        
+        w = w * mask # [2M, N]
+
+    opacities_reshaped = torch.sigmoid(logit_opacities).T # [1, N]
+    t = 1 - w * opacities_reshaped # [2M, N] x [1, N] = [2M, N] 
+    t = t.reshape(2, -1, t.shape[1]) # [2, M, N]
+    #T = torch.prod(t, dim=1) # [2, M, 1]
+    T = torch.prod(t, dim=2) # [2, M, 1]
+    T_mean = T.mean(dim=1) # [2, 1]
+    delta_T = T_mean[1] - T_mean[0] # we want delta out-surface to be as high as possible
+    return delta_T

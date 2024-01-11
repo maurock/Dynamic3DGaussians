@@ -19,7 +19,7 @@ import os
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 # torch.autograd.set_detect_anomaly(True)
 
-def initialise_depth_gaussians(seq, md):
+def initialise_depth_gaussians(seq, md, num_touches):
     """
     Generate gaussians for depth point cloud. Differently from standard Gaussians,
     the 'depth' variable is set to 1.
@@ -29,10 +29,11 @@ def initialise_depth_gaussians(seq, md):
         depth_pt_cld: torch tensor of depth point cloud, shape [N, 3]
     """
     try:
-        depth_pt_cld = np.load(f"./data/{seq}/depth_pt_cld.npz")['arr_0']
+        depth_pt_cld = np.load(f"./data/{seq}/depth_pt_cld.npz")['depth_points']
     except:
-        print("No depth point cloud found. Exiting.")
+        print(f"Depth point cloud not found. Exiting.")
         exit()
+    depth_pt_cld = depth_pt_cld[:num_touches].reshape(-1, 3)
     # seg set to 1 for depth gaussians
     seg = np.ones(shape=(depth_pt_cld.shape[0])) # segmented, e.g. [0, 0, 1, 1, 1 ..]
     # colours always set to grey
@@ -332,8 +333,8 @@ def report_progress(params, data, i, progress_bar, every_i=100):
         progress_bar.update(every_i)
 
 
-def train(seq, exp, args):
-    if os.path.exists(f"./output/{exp}/{seq}"):
+def train(seq, exp, output_seq, args):
+    if os.path.exists(f"./output/{exp}/{output_seq}"):
         print(f"Experiment '{exp}' for sequence '{seq}' already exists. Exiting.")
         return
     md = json.load(open(f"./data/{seq}/train_meta.json", 'r'))  # metadata
@@ -346,7 +347,7 @@ def train(seq, exp, args):
     grad_transparency = None
     finite_element_transparency = None
     if args.explicit_depth or args.density or args.grad_depth or args.transparency or args.grad_transparency or args.finite_element_transparency:
-        params_depth, variables_depth, depth_pt_cld = initialise_depth_gaussians(seq, md)
+        params_depth, variables_depth, depth_pt_cld = initialise_depth_gaussians(seq, md, args.num_touches)
 
         # Combine params and variables for normal and depth gaussians
         params, variables = combine_params_and_variables(params, params_depth, variables, variables_depth)
@@ -417,6 +418,13 @@ def train(seq, exp, args):
                     utils_gaussian.calculate_transparency,
                     transparency_mean
                 )
+                finite_element_transparency_fast = utils_gaussian.finite_element_transparency_fast(
+                    params,
+                    depth_pt_cld,
+                    variables,
+                    normals
+                )
+                print(finite_element_transparency, finite_element_transparency_fast)
 
             loss, variables = get_loss(
                 params,
@@ -449,12 +457,15 @@ def train(seq, exp, args):
         output_params.append(params2cpu(params, is_initial_timestep))
         if is_initial_timestep:
             variables = initialize_post_first_timestep(params, variables, optimizer)
-    save_params(output_params, seq, exp)
-    save_variables(variables, seq, exp)
+    save_params(output_params, output_seq, exp)
+    save_variables(variables, output_seq, exp)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--num_touches", default=1, type=int, help="Number of touches for the depth point cloud."
+    )
     parser.add_argument(
         "--explicit_depth", default=False, action='store_true', help="Enforcing depth Gaussians directly."
     )
@@ -480,11 +491,15 @@ if __name__ == "__main__":
     args.transparency = False
     args.grad_transparency = False
     args.density = False
-    args.finite_element_transparency = False
-
-
+    args.finite_element_transparency = True
+    args.num_touches=30
     
+    # Input
+    input_seq = "coffee"
+    # Output
     exp_name = "exp1"
-    for sequence in ["coffee"]:#["basketball", "boxes", "football", "juggle", "softball", "tennis"]:
-        train(sequence, exp_name, args)
+    output_seq = "coffee_FE"
+    # Train
+    for sequence in [input_seq]:#["basketball", "boxes", "football", "juggle", "softball", "tennis"]:
+        train(sequence, exp_name, output_seq, args)
         torch.cuda.empty_cache()
