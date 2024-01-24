@@ -12,6 +12,7 @@ import os
 import data
 import json
 import matplotlib.cm as cm
+import output
 
 """
 Visualiser. This method was modified from the original code for better interactivity.
@@ -30,12 +31,12 @@ ADDITIONAL_LINES = None  # None, 'trajectories' or 'rotations'
 # ADDITIONAL_LINES = 'rotations'  # None, 'trajectories' or 'rotations'
 
 # REMOVE_BACKGROUND = False  # False or True
-REMOVE_BACKGROUND = True  # False or True
+REMOVE_BACKGROUND = False  # False or True
 
 FORCE_LOOP = False  # False or True
 # FORCE_LOOP = True  # False or True
 
-w, h = 1000, 1000 #640*2, 360*2
+w, h = 800, 800 #640*2, 360*2 # Needs to be the same as W, H of the training images
 near, far = 0.00001, 10000.0
 view_scale = 1 # 3.9
 fps = 20
@@ -58,7 +59,7 @@ def init_camera(y_angle=0., center_dist=10.0, cam_height=1.3, f_ratio=0.82):
 
 
 def load_scene_data(seq, exp, seg_as_col=False):
-    params = dict(np.load(f"./output/{exp}/{seq}/params.npz"))
+    params = dict(np.load(f"{os.path.dirname(output.__file__)}/{exp}/{seq}/params.npz"))
     params = {k: torch.tensor(v).cuda().float() for k, v in params.items()}
     is_fg = params['seg_colors'][:, 0] > 0.5
     scene_data = []
@@ -128,8 +129,8 @@ def render(w2c, k, timestep_data):
 
 
 def rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None):
-    d_near = 2.0
-    d_far = 5.0
+    d_near = 0.9
+    d_far = 5
     invk = torch.inverse(torch.tensor(k).cuda().float())
     c2w = torch.inverse(torch.tensor(w2c).cuda().float())
     radial_depth = depth[0].reshape(-1)
@@ -147,7 +148,7 @@ def rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None):
     # pts is points in 3D world coords
     pts = (c2w @ pts4.T).T[:, :3]
     if show_depth:
-        print(np.amin(z_depth.cpu().numpy()), np.amax(z_depth.cpu().numpy()))
+        # print(np.amin(z_depth.cpu().numpy()), np.amax(z_depth.cpu().numpy()))
         cols = ((z_depth - d_near) / (d_far - d_near))[:, None].repeat(1, 3)
     else:
         cols = torch.permute(im, (1, 2, 0)).reshape(-1, 3)
@@ -190,7 +191,7 @@ def get_camera_positions(seq):
         w2c = np.array(cameras["w2c"])[0, i, :, :]
         camera_positions.append([w2c, k])
     
-    return camera_positions, k, w2c
+    return camera_positions
 
 
 def zoom_out(vis, k):
@@ -212,19 +213,20 @@ def zoom_in(vis, k):
     return False
 
 
-def visualize(seq, exp):
-    scene_data, is_fg = load_scene_data(seq, exp)
+def visualize(input_seq, exp, output_seq):
+    scene_data, is_fg = load_scene_data(output_seq, exp)
 
     # With callback
     vis = o3d.visualization.VisualizerWithKeyCallback()
     vis.create_window(width=int(w * view_scale), height=int(h * view_scale), visible=True)
     camera_index = [0]
     mode = [RENDER_MODE]
-    camera_positions, k, w2c = get_camera_positions(seq)
+    camera_positions = get_camera_positions(input_seq)
     vis.register_key_callback(ord('C'), lambda vis: change_camera(vis, camera_positions, camera_index)) # Bind 'C' key to toggle camera
     vis.register_key_callback(ord('M'), lambda vis: toggle_mode(vis, mode))  # Bind 'M' key to toggle mode
 
     # w2c, k = init_camera()
+    w2c, k = camera_positions[camera_index[0]]
 
     im, depth = render(w2c, k, scene_data[0])
     init_pts, init_cols = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
@@ -298,19 +300,19 @@ def visualize(seq, exp):
             im, depth = render(w2c, k, scene_data[t])
             pts, cols = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
 
-            if mode[0] == 'depth':
+            # if mode[0] == 'depth':
 
-                # Reshape the depth map to 2D for applying the colormap
-                cols_array = np.asarray(cols, dtype=np.float32)[:,0].reshape(h, w)
-                cols_array = np.clip(cols_array, 0, 1)
+            #     # Reshape the depth map to 2D for applying the colormap
+            #     cols_array = np.asarray(cols, dtype=np.float32)[:,0].reshape(h, w)
+            #     cols_array = np.clip(cols_array, 0, 1)
 
-                # Apply a colormap (let's use 'plasma' for this example)
-                colored_depth_map_2d = colormappa(cols_array)
+            #     # Apply a colormap (let's use 'plasma' for this example)
+            #     colored_depth_map_2d = colormappa(cols_array)
 
-                # Now, discard the alpha channel and reshape back to original shape
-                colored_depth_map_1d = colored_depth_map_2d[..., :3].reshape(-1, 3)
+            #     # Now, discard the alpha channel and reshape back to original shape
+            #     colored_depth_map_1d = colored_depth_map_2d[..., :3].reshape(-1, 3)
 
-                cols = o3d.utility.Vector3dVector(colored_depth_map_1d)
+            #     cols = o3d.utility.Vector3dVector(colored_depth_map_1d)
             
         pcd.points = pts
         pcd.colors = cols
@@ -337,6 +339,11 @@ def visualize(seq, exp):
 
 
 if __name__ == "__main__":
+    # Input
+    input_seq = 'toaster'
+    # Output
     exp_name = "exp1"
-    for sequence in ["toaster"]: #, "boxes", "football", "juggle", "softball", "tennis"]:
-        visualize(sequence, exp_name)
+    output_seq = "toaster_15000"
+    # Visualise
+    for sequence in [output_seq]: #, "boxes", "football", "juggle", "softball", "tennis"]:
+        visualize(input_seq, exp_name, sequence)

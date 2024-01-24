@@ -167,7 +167,7 @@ def calculate_gradient(params, depth_pt_cld, normals, variables, f):
     grads_proj = torch.sum(grads[0] * normals, dim=1).mean() # [M, 1], project the gradients onto the normals
     
     # Debug: check that the function computed outside is lower/higher than the one computed inside
-    # It is higher inside for density while it is lower inside for transparency
+    # It is higher inside for density while it is lower inside for transmittance
     x1 = depth_pt_cld.clone() + 0.001 * normals.clone()
     x1.requires_grad_(True)
     x2 = depth_pt_cld.clone() - 0.001 * normals.clone()
@@ -192,13 +192,13 @@ def calculate_gradient(params, depth_pt_cld, normals, variables, f):
     return grads_proj
 
 
-def calculate_transparency(
+def calculate_transmittance(
         params,
         depth_pt_cld,
         variables,
         max_NN=10
     ):
-    """Compute the transparency of the gaussians as the product of 1 - opacity for all gaussians"""
+    """Compute the transmittance of the gaussians as the product of 1 - opacity for all gaussians"""
 
     # Only consider depth gaussians
     indices_gaussians_depth = torch.nonzero(variables['depth'])[:, 0]
@@ -233,7 +233,7 @@ def calculate_transparency(
 
 
 # Define a function that computes the value and returns its gradient vector
-def finite_element_transparency(params, depth_pt_cld, normals, variables, f, value_on):
+def finite_element_transmittance(params, depth_pt_cld, normals, variables, f, value_on):
     """Compute the gradient of the density function w.r.t. depth_pt_cld. Project the gradient onto the normals
     passing through the depth_pt_cld."""
 
@@ -243,7 +243,7 @@ def finite_element_transparency(params, depth_pt_cld, normals, variables, f, val
     else:
         value_on = value_on.clone()
     x1 = depth_pt_cld + 0.01 * normals
-    value_out = f(params, x1, variables) # Transparency over the point cloud + 0.001 * normals
+    value_out = f(params, x1, variables) # Transmittance over the point cloud + 0.001 * normals
     
     delta = value_out - value_on  # we want delta out-surface to be as high as possible
             
@@ -251,7 +251,7 @@ def finite_element_transparency(params, depth_pt_cld, normals, variables, f, val
 
 
 # Define a function that computes the value and returns its gradient vector
-def finite_element_transparency_fast(params,
+def finite_element_transmittance_fast(params,
         depth_pt_cld,
         variables,
         normals,
@@ -260,7 +260,7 @@ def finite_element_transparency_fast(params,
     """Compute the gradient of the density function w.r.t. depth_pt_cld. Project the gradient onto the normals
     passing through the depth_pt_cld."""
 
-    """Compute the transparency of the gaussians as the product of 1 - opacity for all gaussians"""
+    """Compute the transmittance of the gaussians as the product of 1 - opacity for all gaussians"""
 
     # Only consider depth gaussians
     indices_gaussians_depth = torch.nonzero(variables['depth'])[:, 0]

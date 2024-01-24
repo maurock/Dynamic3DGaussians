@@ -1,5 +1,8 @@
 from PIL import Image as PIL_Image
 import os
+import data
+from glob import glob
+
 
 def generate_seg_images(output_root_dir, rgb_folder, num_cam, img_name):
     """Generate black images PNG as everything is static currently. Images have the same size as the original images.
@@ -17,3 +20,13 @@ def generate_seg_images(output_root_dir, rgb_folder, num_cam, img_name):
     if not os.path.exists(target_seg_folder):
         os.makedirs(target_seg_folder)
     black_image.save(os.path.join(target_seg_folder,'render.png'))
+
+
+def get_refnerf_blend_obj_paths():
+    """Get all obj paths"""
+    objs_dir = os.path.join(
+        os.path.dirname(data.__file__),
+        "refnerf-blend",
+        'obj'
+    )
+    return glob(os.path.join(objs_dir, "*.obj"))

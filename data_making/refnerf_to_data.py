@@ -17,7 +17,9 @@ import data_making
 from copy import deepcopy
 from scipy.spatial.transform import Rotation as R
 import utils.utils_colmap as utils_colmap
-
+import trimesh
+import data
+import utils.utils_mesh as utils_mesh
 
 def create_dirs(dirs):
     """Create required directories if they do not already exist.
@@ -127,6 +129,7 @@ def extract_xyzrgb_from_txt(file_path):
             # Split the line and extract X, Y, Z coordinates
             parts = line.split()
             x, y, z, r, g, b = map(float, parts[1:7])
+            r, g, b = r/255., g/255., b/255.
             xyzrgb.append([x, y, z, r, g, b, 1])  # Add a 1 for segmentation
     return np.array(xyzrgb)
 
@@ -239,7 +242,6 @@ def feature_extractor(database_path, output_obj_dir):
         print("Feature extractor finished.")
 
 
-
 def exhaustive_matcher(database_path):
     """Run COLMAP's exhaustive matcher."""
     exhaustive_matcher_cmd = "colmap exhaustive_matcher "\
@@ -265,6 +267,29 @@ def point_triangulator(output_obj_dir, database_path, sparse_init_dir, sparse_bi
         exit(exit_code)
     else:
         print("Point triangulator finished.")
+
+
+def extract_ground_truth(output_obj_dir):
+    """Method to extract point cloud ground truth"""
+    pc_cld_path = os.path.join(output_obj_dir, 'gt_pt_cld.npz')
+    obj_path = os.path.join(os.path.dirname(data.__file__), "refnerf-blend", "obj", f"{os.path.basename(output_obj_dir)}.obj")
+    
+    if f"{os.path.basename(output_obj_dir)}" == 'car':    # Fix mismatch between refnerf and refnerf-blend
+        obj_path = os.path.join(os.path.dirname(data.__file__), "refnerf-blend", "obj", "musclecar.obj")
+
+    # Load mesh
+    try:
+        mesh = trimesh.load_mesh(obj_path)
+        mesh = utils_mesh.as_mesh(mesh)
+        
+        # Points on the object surface
+        pc = np.array(trimesh.sample.sample_surface_even(mesh, 50000)[0])
+
+        np.savez_compressed(pc_cld_path, gt_pt_cld=pc)
+    except:
+        print(f"Error in extracting ground truth point cloud for {os.path.basename(output_obj_dir)}")
+        pass
+        
 
 
 def main(args):
@@ -384,6 +409,9 @@ def main(args):
 
     # Remove unnecessary files and directories
     remove_temporary_files(sparse_init_dir, sparse_bin_dir)
+
+    # Extract ground truth point cloud
+    extract_ground_truth(output_obj_dir)
 
 
 if __name__ == "__main__":

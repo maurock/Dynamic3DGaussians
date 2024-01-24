@@ -9,7 +9,7 @@ import trimesh
 
 # Code adapted from https://github.com/dreamgaussian/dreamgaussian
 @torch.no_grad()
-def extract_transparency(
+def extract_transmittance(
         opacities,
         xyzs,
         stds,
@@ -243,7 +243,7 @@ def extract_mesh(
     """Method to extract mesh from Gaussian Splatting."""
 
     start = time.time()
-    occ = extract_transparency(
+    occ = extract_transmittance(
         opacities,
         xyzs,
         stds,
@@ -254,7 +254,7 @@ def extract_mesh(
         num_blocks,
         relax_ratio
     ).detach().cpu().numpy()
-    print(f'Extract transparency: {time.time() - start}')
+    print(f'Extract transmittance: {time.time() - start}')
     print(occ.mean())
 
     start = time.time()

@@ -3,7 +3,10 @@ import os
 import open3d as o3d
 import numpy as np
 from diff_gaussian_rasterization import GaussianRasterizationSettings as Camera
-
+from PIL import Image
+import yaml
+import cv2
+import torch.nn.functional as F
 
 def setup_camera(w, h, k, w2c, near=0.01, far=100):
     fx, fy, cx, cy = k[0][0], k[1][1], k[0][2], k[1][2]
@@ -123,6 +126,7 @@ def save_params(output_params, seq, exp):
         os.makedirs(f"./output/{exp}/{seq}", exist_ok=True)
         np.savez(f"./output/{exp}/{seq}/params", **to_save)
 
+
 def save_variables(output_variables, seq, exp):
     print('Saving variables. Only works for static scenes.')
     to_save = {}
@@ -130,3 +134,120 @@ def save_variables(output_variables, seq, exp):
         to_save[k] = v.detach().cpu() if isinstance(v, torch.Tensor) else v
     os.makedirs(f"./output/{exp}/{seq}", exist_ok=True)
     np.savez(f"./output/{exp}/{seq}/variables", **to_save)
+
+
+def save_eval_helper(input_seq, output_seq, exp):
+    """Save the object name to a text file for evaluation"""
+    if not os.path.exists(f"./output/{exp}/{output_seq}/eval"):
+        os.makedirs(f"./output/{exp}/{output_seq}/eval")
+    with open(f"./output/{exp}/{output_seq}/eval/eval_helper.txt", "w") as f:
+        f.write(input_seq)
+
+
+def load_rgb_image(path):
+    """Load image from path and convert to torch tensor of shape (3, H, W)"""
+    img_np = np.array(Image.open(path))
+    return torch.tensor(img_np).float().cuda().permute(2, 0, 1) / 255
+
+
+def load_disparity_image(path):
+    """Load disparity image from path (H, W, 4) and convert to torch tensor of shape (H, W).
+    The disparity image is stored as a 16-bit per-channel TIFF file. As a standard procedure,
+    because we are decoding the raw bytes of the image, we need to convert the bytes to a numpy array
+    and normalise it by dividing by 2^16."""
+
+    with open(path, 'rb') as f:
+        bytes_ = np.asarray(bytearray(f.read()), dtype=np.uint8)
+
+    disp = np.array(cv2.imdecode(bytes_, cv2.IMREAD_UNCHANGED), dtype=np.float32)
+    disp = disp / 2**16
+    disp_filtered = disp[:, : , 0] # only use the first channel
+
+    return torch.tensor(disp_filtered).float().cuda()
+
+
+def convert_disparity_to_depth(disparity_img):
+    """Convert disparity to depth: 
+    disparity = 1 / (1 + depth), so depth = 1 / disp - 1"""
+    depth = 1 / (disparity_img + 1e-9) - 1
+    return depth
+
+
+def normalise_depth(depth, min_depth, max_depth):
+    """Clip depth between two vlaues and normalise it.
+    Parameters:
+        depth (np.array | torch.tensor): Depth image, shape (H, W)
+    """
+    # Clip depth between min and max depth (np.array or torch.Tensor)
+    if isinstance(depth, np.ndarray):
+        depth = np.clip(depth, min_depth, max_depth)
+    elif isinstance(depth, torch.Tensor):
+        depth = torch.clamp(depth, min_depth, max_depth)
+    depth = (depth - min_depth) / (max_depth - min_depth)
+    return depth 
+    
+
+def read_config(config_path):
+    """Read the YAML config file and return dictionary of parameters"""
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    return config
+
+# Code adapted from https://github.com/brownvc/diffdiffdepth/blob/main/loss.py
+def edge_aware_smoothness_per_pixel(img, pred):
+    """ A measure of how closely the gradients of a predicted disparity/depth map match the 
+    gradients of the RGB image. 
+
+    Args:
+      img (c x 3 x h x w tensor): RGB image
+      pred (c x h x w tensor): predicted depth/disparity
+
+    Returns:
+      c x 1 tensor: measure of gradient matching (smoothness loss)
+    """
+   
+    def gradient_y(img):
+        gy = torch.cat([F.conv2d(img[:, i, :, :].unsqueeze(0),torch.Tensor([[2, 2, 4, 2, 2], [1, 1, 2, 1, 1], [0, 0, 0, 0, 0], [-1, -1, -2, -1, -1], [-2, -2, -4, -2, -2]]).cuda().view((1, 1, 5, 5)), padding=2) for i in range(img.shape[1])], 1)
+        return gy
+
+    def gradient_x(img):
+        gx = torch.cat( [F.conv2d(img[:, i, :, :].unsqueeze(0), torch.Tensor([[2, 1, 0, -1, -2], [2, 1, 0, -1, -2], [4, 2, 0, -2, -4], [2, 1, 0, -1, -2], [2, 1, 0, -1, -2]]).cuda().view((1, 1, 5, 5)), padding=2) for i in range(img.shape[1])], 1)
+        return gx
+    
+    def create_border_mask(height, width, border_size):
+        """
+        Create a mask that is 0 at the borders and 1 elsewhere.
+        Args:
+        - height (int): The height of the mask.
+        - width (int): The width of the mask.
+        - border_size (int): The width of the border where the mask will be 0.
+
+        Returns:
+        - torch.Tensor: The border mask.
+        """
+        mask = torch.ones((height, width))
+        mask[:, :border_size] = 0  # Left border
+        mask[:, -border_size:] = 0  # Right border
+        mask[:border_size, :] = 0  # Top border
+        mask[-border_size:, :] = 0  # Bottom border
+        return mask
+    
+    pred_gradients_x = gradient_x(pred)
+    pred_gradients_y = gradient_y(pred)
+
+    mask = create_border_mask(pred_gradients_x.shape[2], pred_gradients_x.shape[3], 2).cuda()
+    pred_gradients_x = pred_gradients_x * mask
+    pred_gradients_y = pred_gradients_y * mask
+    
+    image_gradients_x = gradient_x(img)
+    image_gradients_y = gradient_y(img)
+    
+    weights_x = torch.exp(-torch.mean(torch.abs(image_gradients_x), 1, keepdim=True))
+    weights_y = torch.exp(-torch.mean(torch.abs(image_gradients_y), 1, keepdim=True))
+       
+    smoothness_x = torch.abs(pred_gradients_x) * weights_x
+    smoothness_y = torch.abs(pred_gradients_y) * weights_y
+
+    return torch.mean(smoothness_x) + torch.mean(smoothness_y)
+
+

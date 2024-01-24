@@ -13,6 +13,7 @@ import argparse
 import data
 import os
 from glob import glob
+from utils import utils_data_making
 
 def load_mesh(filename):
     scene_or_mesh = trimesh.load_mesh(filename)
@@ -103,20 +104,9 @@ def debug_plot(points, intersections, depth_points=None):
     fig.show()
 
 
-def get_obj_paths():
-    """Get all obj paths"""
-    objs_dir = os.path.join(
-        os.path.dirname(data.__file__),
-        "refnerf-blend",
-        'obj'
-    )
-    return glob(os.path.join(objs_dir, "*.obj"))
-
-
 def main(args):
     # List all objects paths
-    obj_paths = get_obj_paths()
-
+    obj_paths = utils_data_making.get_refnerf_blend_obj_paths()
 
     for obj in obj_paths:
         # List of depth points
@@ -163,8 +153,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--max_num_touches', type=int, default=50)
-    parser.add_argument('--num_points_per_intersection', type=int, default=100)
+    parser.add_argument('--num_points_per_intersection', type=int, default=50)
     args = parser.parse_args()
     
-    args.max_num_touches = 50
     main(args)
