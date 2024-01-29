@@ -196,7 +196,7 @@ def calculate_transmittance(
         params,
         depth_pt_cld,
         variables,
-        max_NN=10
+        max_NN=50
     ):
     """Compute the transmittance of the gaussians as the product of 1 - opacity for all gaussians"""
 
@@ -214,20 +214,24 @@ def calculate_transmittance(
     g_covs = covs.unsqueeze(0).repeat(depth_pt_cld.shape[0], 1, 1) # [M, N, 6]
 
     w = gaussian_3d_coeff(g_pts.reshape(-1, 3), g_covs.reshape(-1, 6)).reshape(depth_pt_cld.shape[0], -1) # [MxN] -> [M, N]
-    
-    if w.shape[1] > max_NN:
-
-        _, top_indices = torch.topk(w, max_NN, dim=1)
-        mask = torch.zeros_like(w).cuda()
-        mask.scatter_(1, top_indices, 1)
-        
-        w = w * mask # [M, N]
 
     opacities_reshaped = torch.sigmoid(logit_opacities).T # [1, N]
     t = 1 - w * opacities_reshaped # [M, N] x [1, N] = [M, N] 
-    T = torch.prod(t, dim=1) # [M, 1]
 
-    T_mean = T.mean()
+    if t.shape[1] > max_NN:
+
+        _, top_indices = torch.topk(-t, max_NN, dim=1)
+        # mask = torch.zeros_like(t).cuda()
+        # mask.scatter_(1, top_indices, 1)
+        
+        # t = t * mask # [M, N]
+
+    t = torch.gather(t, 1, top_indices)
+
+    # T = torch.prod(t, dim=1) # [M, 1]
+    # T_mean = T.mean()
+
+    T_mean = t.mean()
     
     return T_mean
 

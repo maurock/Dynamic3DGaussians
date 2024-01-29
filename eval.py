@@ -24,9 +24,9 @@ class Evaluator:
         self.input_seq, self.data_dir = self.get_data_dir()
 
         # Extract ground truth data for evaluation
-        self.rgb_gt = self.get_rgb_gt()
-        self.depth_gt = self.get_depth_gt()
-        self.pc_gt = self.get_pc_gt()
+        # self.rgb_gt = self.get_rgb_gt()
+        # self.depth_gt = self.get_depth_gt()
+        # self.pc_gt = self.get_pc_gt()
 
         # Extract prediction data for evaluation
         if not self.check_pred_exists():
@@ -36,15 +36,15 @@ class Evaluator:
             extract_output_data.save_output_pointcloud(pc_pred_npy, self.args.exp_name, self.args.output_seq)
             extract_output_data.save_output_depth_images(depth_pred_npy, self.args.exp_name, self.args.output_seq)
             extract_output_data.save_output_rgb_images(rgb_pred_npy, self.args.exp_name, self.args.output_seq)
-        else:
-            rgb_pred_npy, depth_pred_npy, pc_pred_npy = self.load_predictions()
-        self.rgb_pred = torch.tensor(rgb_pred_npy).cuda()
-        self.depth_pred = torch.tensor(depth_pred_npy).cuda()
-        self.pc_pred = torch.tensor(pc_pred_npy).cuda()
+        # else:
+        #     rgb_pred_npy, depth_pred_npy, pc_pred_npy = self.load_predictions()
+        # # self.rgb_pred = torch.tensor(rgb_pred_npy).cuda()
+        # self.depth_pred = torch.tensor(depth_pred_npy).cuda()
+        # self.pc_pred = torch.tensor(pc_pred_npy).cuda()
 
         # Normalise depths
-        self.depth_pred = helpers.normalise_depth(self.depth_pred, min_depth=1, max_depth=6)
-        self.depth_gt = helpers.normalise_depth(self.depth_gt, min_depth=1, max_depth=6)
+        # self.depth_pred = helpers.normalise_depth(self.depth_pred, min_depth=1, max_depth=6)
+        # self.depth_gt = helpers.normalise_depth(self.depth_gt, min_depth=1, max_depth=6)
         print()
 
 
@@ -111,15 +111,24 @@ class Evaluator:
                   os.path.exists(os.path.join(self.experiment_dir, "eval", "pc_pred.npz")))
         return pred_exists
 
-    def load_predictions(self):
+    def load_rgb_pred(self):
         """Load the prediction data."""
         # Load data as numpy arrays
         rgb_pred_npy = np.load(os.path.join(self.experiment_dir, "eval", "rgb_pred.npz"))['rgb']
+        return rgb_pred_npy
+    
+    def load_depth_pred(self):
+        """Load the prediction data."""
+        # Load data as numpy arrays
         depth_pred_npy = np.load(os.path.join(self.experiment_dir, "eval", "depth_pred.npz"))['depth']
+        return depth_pred_npy
+    
+    def load_pc_pred(self):
+        """Load the prediction data."""
+        # Load data as numpy arrays
         pc_pred_npy = np.load(os.path.join(self.experiment_dir, "eval", "pc_pred.npz"))['pts']
-
-        return rgb_pred_npy, depth_pred_npy, pc_pred_npy
-
+        return pc_pred_npy
+    
     def _debug_shapes(self):
         print(f'rgb_gt: {self.rgb_gt.shape}')
         print(f'depth_gt: {self.depth_gt.shape}')
@@ -153,11 +162,11 @@ class Evaluator:
             )])
         fig.show()
 
-    def _debug_depth(self):
+    def _debug_depth(self, depth_gt, depth_pred):
         for i in range(1):
             # Convert tensors to numpy arrays
-            depth_gt_array = self.depth_gt[i].cpu().numpy()
-            depth_pred_array = self.depth_pred[i].cpu().numpy()
+            depth_gt_array = depth_gt[i].cpu().numpy()
+            depth_pred_array = depth_pred[i].cpu().numpy()
 
             # Scale the arrays from 0-1 to 0-255 and convert to uint8
             depth_gt_array = (depth_gt_array * 255).astype(np.uint16)
@@ -179,26 +188,57 @@ class Evaluator:
 
             # Display the combined image
             new_im.show()
-            
-            
+
+    def evaluate_rgb(self):
+        rgb_gt = self.get_rgb_gt()
+        rgb_pred_npy = self.load_rgb_pred()
+        rgb_pred = torch.tensor(rgb_pred_npy).cuda()
+        ssim_rgb = external.calc_ssim(rgb_gt, rgb_pred.clip(0,1)).item()
+        psnr_rgb = external.calc_psnr(rgb_gt, rgb_pred.clip(0,1)).mean().item()
+        torch.cuda.empty_cache()
+
+        return ssim_rgb, psnr_rgb
+    
+    def evaluate_3D(self):
+        pc_gt = self.get_pc_gt()
+        pc_pred_npy = self.load_pc_pred()
+        pc_pred = torch.tensor(pc_pred_npy).cuda()
+
+        cd = chamfer_distance(pc_gt.unsqueeze(0), pc_pred.unsqueeze(0))[0].item()
+        emd = earth_mover_distance(pc_gt[:5000].cpu(), pc_pred[:5000].cpu()).item()
+        torch.cuda.empty_cache()
+
+        return cd, emd
+    
+    def evaluate_depth(self):
+        # Load
+        depth_gt = self.get_depth_gt()
+        depth_pred_npy = self.load_depth_pred()
+        depth_pred = torch.tensor(depth_pred_npy).cuda()
+        
+        # Normalise depth
+        depth_pred = helpers.normalise_depth(depth_pred, min_depth=1, max_depth=6)
+        depth_gt = helpers.normalise_depth(depth_gt, min_depth=1, max_depth=6)
+        ssim_depth = external.calc_ssim(depth_gt, depth_pred).item()
+        psnr_depth = external.calc_psnr(depth_gt, depth_pred).mean().item()
+       
+        torch.cuda.empty_cache()
+        return ssim_depth, psnr_depth
+    
 def main(args):
     evaluator = Evaluator(args)
 
-    evaluator._debug_depth()
     # evaluator._debug_shapes()
 
     # Compute RGB metrics
-    ssim_rgb = external.calc_ssim(evaluator.rgb_gt, evaluator.rgb_pred).item()
-    psnr_rgb = external.calc_psnr(evaluator.rgb_gt, evaluator.rgb_pred).mean().item()
+    ssim_rgb, psnr_rgb = evaluator.evaluate_rgb()
     # TODO LPIPS
 
     # Compute 3D metrics
-    cd = chamfer_distance(evaluator.pc_gt.unsqueeze(0), evaluator.pc_pred.unsqueeze(0))[0].item()
-    emd = earth_mover_distance(evaluator.pc_gt[:5000].cpu(), evaluator.pc_pred[:5000].cpu()).item()
+    cd, emd = evaluator.evaluate_3D()
 
     # Compute depth metrics
-    ssim_depth = external.calc_ssim(evaluator.depth_gt, evaluator.depth_pred).item()
-    psnr_depth = external.calc_psnr(evaluator.depth_gt, evaluator.depth_pred).mean().item()
+    ssim_depth, psnr_depth = evaluator.evaluate_depth()
 
     # Save metrics as json file
     metrics = {
@@ -224,6 +264,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     args.exp_name = 'exp1'
-    args.output_seq = 'toaster_15000_old'
+    args.output_seq = 'toaster_15000_new_smooth01'
 
     main(args)

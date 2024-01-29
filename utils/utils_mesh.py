@@ -290,7 +290,7 @@ def estimate_normals(depth_pt_cld):
     # To align the normals correctly (ouward), we sample random points on a virtual
     # hemisphere surrounding the object. We compute the closest distance to a point. 
     # the position of that point determines the direction of the normal. 
-    points_on_hemisphere = fibonacci_hemisphere(1000, 5)
+    points_on_hemisphere = fibonacci_hemisphere(1000, 10)
     points_on_hemisphere = torch.tensor(points_on_hemisphere, dtype=torch.float32).cuda() # [1000, 3]
     diff = points_on_hemisphere.unsqueeze(0) - depth_pt_cld.unsqueeze(1)   # [1, 1000, 3] - [N, 1, 3] --> [N, 1000, 3]
     dist = torch.norm(diff, dim=-1) # [N, 1000]
@@ -313,6 +313,7 @@ def estimate_normals(depth_pt_cld):
 
 
 def _debug_normals(depth_pt_cld, normals):
+    # Plot normals
     fig = go.Figure(data=[go.Scatter3d(
         x=depth_pt_cld.cpu()[:, 0],
         y=depth_pt_cld.cpu()[:, 1],
@@ -337,6 +338,31 @@ def _debug_normals(depth_pt_cld, normals):
     ))
     fig.show()
 
+    # Plot depth points and displaced points
+    disp_points = depth_pt_cld + 0.1 * normals
+    fig = go.Figure(data=[go.Scatter3d(
+        x=depth_pt_cld.cpu()[:, 0],
+        y=depth_pt_cld.cpu()[:, 1],
+        z=depth_pt_cld.cpu()[:, 2],
+        mode='markers',
+        marker=dict(
+            size=2,
+            color='red',
+            opacity=0.8
+        )
+    )])
+    fig.add_trace(go.Scatter3d(
+        x=disp_points.cpu()[:, 0],
+        y=disp_points.cpu()[:, 1],
+        z=disp_points.cpu()[:, 2],
+        mode='markers',
+        marker=dict(
+            size=2,
+            color='green',
+            opacity=0.8
+        )
+    ))
+    fig.show()
 
 def as_mesh(scene_or_mesh):
     if isinstance(scene_or_mesh, trimesh.Scene):

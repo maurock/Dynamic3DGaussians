@@ -11,6 +11,7 @@ import json
 import matplotlib.cm as cm
 import output
 import argparse
+import helpers
 
 """
 Visualiser. This method was modified from the original code for better interactivity.
@@ -68,13 +69,6 @@ def load_scene_data(seq, exp, seg_as_col=False):
     return scene_data, is_fg
 
 
-def render(w2c, k, timestep_data):
-    with torch.no_grad():
-        cam = setup_camera(w, h, k, w2c, near, far)
-        im, _, depth, = Renderer(raster_settings=cam)(**timestep_data)
-        return im, depth
-
-
 def rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None):
     d_near = 0.9
     d_far = 5.0
@@ -84,8 +78,9 @@ def rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None):
     # def_rays is the unnormalised rays in the camera frame
     # x_2D = K @ x_3D, so x_3D = K^-1 @ x_2D. In this case, x_2D is pixels and x_3D is rays.
     def_rays = (invk @ def_pix.T).T
-    # normalise
-    def_radial_rays = def_rays / torch.linalg.norm(def_rays, ord=2, dim=-1)[:, None]
+    # I think we should use the unnnormalised version of it
+    def_radial_rays = def_rays
+    # def_radial_rays = def_rays / torch.linalg.norm(def_rays, ord=2, dim=-1)[:, None]
     # rays * depth = 3D points in camera coords
     pts_cam = def_radial_rays * radial_depth[:, None]
     z_depth = pts_cam[:, 2]
@@ -152,7 +147,7 @@ def save_output_rgb_images(im_all, exp_name, output_seq):
     np.savez_compressed(output_im_path, rgb=im_all)
 
 
-def extract_output_data(input_seq, exp_name, output_seq):
+def extract_output_data(input_seq, exp_name, output_seq, near=0.1, far=100000.0):
     """Extract pointcloud and depth images from the output of the model.
     Parameters:
         input_seq (str): Name of the input sequence, e.g. 'toaster'
@@ -174,7 +169,8 @@ def extract_output_data(input_seq, exp_name, output_seq):
 
     w2c, k = camera_positions[camera_index[0]]
 
-    im, depth = render(w2c, k, scene_data[0])
+    # im, depth = render(w2c, k, scene_data[0])
+    im, depth, alpha = helpers.render(w, h, k, w2c, near, far, scene_data[0])
     init_pts, init_cols = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
     pcd = o3d.geometry.PointCloud()
     pcd.points = init_pts
@@ -207,7 +203,8 @@ def extract_output_data(input_seq, exp_name, output_seq):
         cam_params.extrinsic = w2c
         view_control.convert_from_pinhole_camera_parameters(cam_params, allow_arbitrary=True)
 
-        im, depth = render(w2c, k, scene_data[0])
+        # im, depth = render(w2c, k, scene_data[0])
+        im, depth, alpha = helpers.render(w, h, k, w2c, near, far, scene_data[0])
         pts, cols = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
 
         pcd.points = pts
@@ -262,7 +259,7 @@ if __name__ == "__main__":
     input_seq = 'toaster'
     # Output
     exp_name = "exp1"
-    output_seq = "toaster_15000"
+    output_seq = "toaster_15000_new"
 
     # Visualise
     for sequence in [output_seq]: #, "boxes", "football", "juggle", "softball", "tennis"]:
@@ -270,13 +267,16 @@ if __name__ == "__main__":
 
         # Save pointcloud
         if args.save_pointcloud:
+            helpers.create_dirs(f"{os.path.dirname(output.__file__)}/{exp_name}/{output_seq}/eval")
             save_output_pointcloud(pts_all, exp_name, output_seq)
 
         # Save depth images
         if args.save_depth:
+            helpers.create_dirs(f"{os.path.dirname(output.__file__)}/{exp_name}/{output_seq}/eval")
             save_output_depth_images(depth_all, exp_name, output_seq)
 
         # Save rgb images
         if args.save_rgb:
+            helpers.create_dirs(f"{os.path.dirname(output.__file__)}/{exp_name}/{output_seq}/eval")
             save_output_rgb_images(im_all, exp_name, output_seq)
             

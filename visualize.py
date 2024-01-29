@@ -13,6 +13,7 @@ import data
 import json
 import matplotlib.cm as cm
 import output
+import helpers
 
 """
 Visualiser. This method was modified from the original code for better interactivity.
@@ -121,11 +122,11 @@ def calculate_rot_vec(scene_data, is_fg):
     return make_lineset(out_pts, cols, num_lines)
 
 
-def render(w2c, k, timestep_data):
-    with torch.no_grad():
-        cam = setup_camera(w, h, k, w2c, near, far)
-        im, _, depth, = Renderer(raster_settings=cam)(**timestep_data)
-        return im, depth
+# def render(w2c, k, timestep_data):
+#     with torch.no_grad():
+#         cam = setup_camera(w, h, k, w2c, near, far)
+#         im, depth, alpha, radii = Renderer(raster_settings=cam)(**timestep_data)
+#         return im, depth
 
 
 def rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None):
@@ -138,7 +139,8 @@ def rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None):
     # x_2D = K @ x_3D, so x_3D = K^-1 @ x_2D. In this case, x_2D is pixels and x_3D is rays.
     def_rays = (invk @ def_pix.T).T
     # normalise
-    def_radial_rays = def_rays / torch.linalg.norm(def_rays, ord=2, dim=-1)[:, None]
+    def_radial_rays = def_rays
+    # def_radial_rays = def_rays / torch.linalg.norm(def_rays, ord=2, dim=-1)[:, None]
     # rays * depth = 3D points in camera coords
     pts_cam = def_radial_rays * radial_depth[:, None]
     z_depth = pts_cam[:, 2]
@@ -170,6 +172,19 @@ def change_camera(vis, camera_positions, camera_index):
     vis.get_view_control().convert_from_pinhole_camera_parameters(cam_params, allow_arbitrary=True)
     print(camera_index)
     return False
+
+
+def plot_views(vis,depth,im):
+    import matplotlib.pyplot as plt
+    plt.figure(figsize=(30,10))
+    plt.subplot(1,2,1)
+    plt.imshow(im.permute(1,2,0).cpu().numpy())
+    plt.colorbar()
+    plt.subplot(1,2,2)
+    plt.imshow(depth.clip(0,5).cpu().numpy()[0], cmap='gray')
+    plt.colorbar()
+    plt.show()
+
 
 def toggle_mode(vis, mode):
     if mode[0] == 'color':
@@ -225,10 +240,15 @@ def visualize(input_seq, exp, output_seq):
     vis.register_key_callback(ord('C'), lambda vis: change_camera(vis, camera_positions, camera_index)) # Bind 'C' key to toggle camera
     vis.register_key_callback(ord('M'), lambda vis: toggle_mode(vis, mode))  # Bind 'M' key to toggle mode
 
+    vis.register_key_callback(ord('A'), lambda vis: plot_views(vis, depth, im))  # Bind 'M' key to toggle mode
+
+
     # w2c, k = init_camera()
     w2c, k = camera_positions[camera_index[0]]
 
-    im, depth = render(w2c, k, scene_data[0])
+    im, depth, alpha = helpers.render(w, h, k, w2c, near, far, scene_data[0])
+    # im, depth = helpers.render(w, h, k, w2c, near, far, scene_data[0])
+
     init_pts, init_cols = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
     pcd = o3d.geometry.PointCloud()
     pcd.points = init_pts
@@ -297,7 +317,8 @@ def visualize(input_seq, exp, output_seq):
             pts = o3d.utility.Vector3dVector(scene_data[t]['means3D'].contiguous().double().cpu().numpy())
             cols = o3d.utility.Vector3dVector(scene_data[t]['colors_precomp'].contiguous().double().cpu().numpy())
         else:
-            im, depth = render(w2c, k, scene_data[t])
+            im, depth, alpha = helpers.render(w, h, k, w2c, near, far, scene_data[0])
+            # im, depth = helpers.render(w, h, k, w2c, near, far, scene_data[0])
             pts, cols = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
 
             # if mode[0] == 'depth':
@@ -343,7 +364,7 @@ if __name__ == "__main__":
     input_seq = 'toaster'
     # Output
     exp_name = "exp1"
-    output_seq = "toaster_15000"
+    output_seq = "toaster_15000_new_smooth01_FE05_temp"
     # Visualise
     for sequence in [output_seq]: #, "boxes", "football", "juggle", "softball", "tennis"]:
         visualize(input_seq, exp_name, sequence)

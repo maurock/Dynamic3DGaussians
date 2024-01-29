@@ -20,15 +20,7 @@ import utils.utils_colmap as utils_colmap
 import trimesh
 import data
 import utils.utils_mesh as utils_mesh
-
-def create_dirs(dirs):
-    """Create required directories if they do not already exist.
-    It accepts single directory or a list of directories."""
-    if not isinstance(dirs, list):
-        dirs = [dirs]
-    for dir in dirs:
-        if not os.path.exists(dir):
-            os.makedirs(dir) 
+import helpers
 
 # Custom function to extract the integer following 'r_'
 def _extract_number(file_path):
@@ -106,7 +98,7 @@ def convert_bin_to_txt(output_obj_dir):
     # Set directories
     sparse_dir = os.path.join(output_obj_dir, "sparse_bin")
     sparse_txt_dir = os.path.join(output_obj_dir, "sparse")
-    create_dirs(sparse_txt_dir)
+    helpers.create_dirs(sparse_txt_dir)
     # Convert points3D.bin to .txt
     bin_to_txt_cmd = "colmap model_converter "\
         f"--input_path  {sparse_dir} "\
@@ -204,7 +196,7 @@ def create_temporary_dirs_files(output_obj_dir, meta_train, meta_test, sorted_im
     """Create the temporary directories and files required by COLMAP: images.txt, cameras.txt, and empty points3D.txt"""
     sparse_init_dir = os.path.join(output_obj_dir, "sparse_init")
     sparse_bin_dir = os.path.join(output_obj_dir, "sparse_bin")
-    create_dirs([sparse_init_dir, sparse_bin_dir])
+    helpers.create_dirs([sparse_init_dir, sparse_bin_dir])
 
     # Create images.txt content
     images_content = ""
@@ -331,7 +323,7 @@ def main(args):
         cam_image_dir = os.path.join(output_obj_dir, "ims", str(i))
         depth_image_dir = os.path.join(output_obj_dir, "depth", str(i))
         seg_image_dir = os.path.join(output_obj_dir, "seg", str(i))
-        create_dirs([cam_image_dir, depth_image_dir, seg_image_dir])
+        helpers.create_dirs([cam_image_dir, depth_image_dir, seg_image_dir])
 
         # Convert image PNG to JPEG and save it
         im = Image.open(sorted_ims[i])

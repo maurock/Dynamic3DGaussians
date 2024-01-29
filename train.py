@@ -221,7 +221,7 @@ def get_loss(
 
     rendervar = params2rendervar(params)
     rendervar['means2D'].retain_grad()
-    im, radius, depth, = Renderer(raster_settings=curr_data['cam'])(**rendervar)
+    im, radius, depth, alpha = Renderer(raster_settings=curr_data['cam'],train=True)(**rendervar)
 
     curr_id = curr_data['id']
     im = torch.exp(params['cam_m'][curr_id])[:, None, None] * im + params['cam_c'][curr_id][:, None, None]
@@ -231,7 +231,7 @@ def get_loss(
     # segrendervar = params2rendervar(params)
     # segrendervar['colors_precomp'] = params['seg_colors']
     # seg, _, _, = Renderer(raster_settings=curr_data['cam'])(**segrendervar)
-    losses['seg'] = 0 #0.8 * l1_loss_v1(seg, curr_data['seg']) + 0.2 * (1.0 - calc_ssim(seg, curr_data['seg']))
+    # losses['seg'] = 0 #0.8 * l1_loss_v1(seg, curr_data['seg']) + 0.2 * (1.0 - calc_ssim(seg, curr_data['seg']))
     
     if not is_initial_timestep:
         is_fg = (params['seg_colors'][:, 0] > 0.5).detach()
@@ -296,7 +296,8 @@ def get_loss(
     }
 
     loss = sum([loss_weights[k] * v for k, v in losses.items()])
-    # print([f'{k}: {(loss_weights[k] * v):.6f}' for k, v in losses.items()])
+    if i % 200 == 0:
+        print([f'{k}: {(loss_weights[k] * v):.6f}' for k, v in losses.items()])
     seen = radius > 0
     variables['max_2D_radius'][seen] = torch.max(radius[seen], variables['max_2D_radius'][seen])
     variables['seen'] = seen
@@ -353,7 +354,7 @@ def initialize_post_first_timestep(params, variables, optimizer, num_knn=20):
 
 def report_progress(params, data, i, progress_bar, variables, every_i=100):
     if i % every_i == 0:
-        im, _, _, = Renderer(raster_settings=data['cam'])(**params2rendervar(params))
+        im, _, _, _ = Renderer(raster_settings=data['cam'],train=True)(**params2rendervar(params))
         curr_id = data['id']
         im = torch.exp(params['cam_m'][curr_id])[:, None, None] * im + params['cam_c'][curr_id][:, None, None]
         psnr = calc_psnr(im, data['im']).mean()
@@ -398,7 +399,7 @@ def train(configs):#seq, exp, output_seq, args):
     if configs['grad_depth'] or configs['grad_transmittance'] or configs['finite_element_transmittance']:
         normals = utils_mesh.estimate_normals(depth_pt_cld)
         # Debug normals by visualising them using plotly. Normals are visualised as vectors.
-        # utils_mesh._debug_normals(depth_pt_cld, normals)    
+        utils_mesh._debug_normals(depth_pt_cld, normals)    
 
     optimizer = initialize_optimizer(params, variables)
     output_params = []

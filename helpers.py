@@ -3,6 +3,7 @@ import os
 import open3d as o3d
 import numpy as np
 from diff_gaussian_rasterization import GaussianRasterizationSettings as Camera
+from diff_gaussian_rasterization import GaussianRasterizer as Renderer
 from PIL import Image
 import yaml
 import cv2
@@ -29,7 +30,8 @@ def setup_camera(w, h, k, w2c, near=0.01, far=100):
         projmatrix=full_proj,
         sh_degree=0,
         campos=cam_center,
-        prefiltered=False
+        prefiltered=False,
+        debug=False
     )
     return cam
 
@@ -251,3 +253,20 @@ def edge_aware_smoothness_per_pixel(img, pred):
     return torch.mean(smoothness_x) + torch.mean(smoothness_y)
 
 
+def create_dirs(dirs):
+    """Create required directories if they do not already exist.
+    It accepts single directory or a list of directories."""
+    if not isinstance(dirs, list):
+        dirs = [dirs]
+    for dir in dirs:
+        if not os.path.exists(dir):
+            os.makedirs(dir) 
+
+
+def render(w, h, k, w2c, near, far, timestep_data,train=False):
+    with torch.no_grad():
+        cam = setup_camera(w, h, k, w2c, near, far)
+        im, radius, depth, alpha = Renderer(raster_settings=cam,train=train)(**timestep_data)
+        return im, depth, alpha
+        # im, radius, depth = Renderer(raster_settings=cam)(**timestep_data)
+        # return im, depth
