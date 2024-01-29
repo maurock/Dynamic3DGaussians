@@ -1,0 +1,3 @@
+[submodule "depth-diff-gaussian-rasterization"]
+	path = depth-diff-gaussian-rasterization
+	url = https://github.com/maurock/depth-diff-gaussian-rasterization
