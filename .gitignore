@@ -4,3 +4,6 @@ data/
 output/
 .ipynb_checkpoints
 notebooks/
+
+!output/__init__/
+!data/__init__/
