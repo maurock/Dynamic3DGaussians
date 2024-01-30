@@ -364,7 +364,7 @@ if __name__ == "__main__":
     input_seq = 'toaster'
     # Output
     exp_name = "exp1"
-    output_seq = "toaster_15000_new_smooth01_FE05_temp"
+    output_seq = "toaster_15000_T1_maxNN10"
     # Visualise
     for sequence in [output_seq]: #, "boxes", "football", "juggle", "softball", "tennis"]:
         visualize(input_seq, exp_name, sequence)

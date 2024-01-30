@@ -8,6 +8,7 @@ from PIL import Image
 import yaml
 import cv2
 import torch.nn.functional as F
+import output
 
 def setup_camera(w, h, k, w2c, near=0.01, far=100):
     fx, fy, cx, cy = k[0][0], k[1][1], k[0][2], k[1][2]
@@ -194,6 +195,21 @@ def read_config(config_path):
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
     return config
+
+
+def save_config(config):
+    """Save the config dictionary to a YAML file"""
+    path = os.path.join(
+        os.path.dirname(output.__file__),
+        config['exp_name'],
+        config['output_seq'],
+        'config.yaml'
+    )
+    if not os.path.exists(os.path.dirname(path)):
+        os.makedirs(os.path.dirname(path))
+    with open(path, 'w') as f:
+        yaml.dump(config, f)
+
 
 # Code adapted from https://github.com/brownvc/diffdiffdepth/blob/main/loss.py
 def edge_aware_smoothness_per_pixel(img, pred):

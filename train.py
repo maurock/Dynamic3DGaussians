@@ -8,7 +8,7 @@ from random import randint
 from tqdm import tqdm
 from diff_gaussian_rasterization import GaussianRasterizer as Renderer
 from helpers import setup_camera, l1_loss_v1, l1_loss_v2, weighted_l2_loss_v1, weighted_l2_loss_v2, quat_mult, \
-    o3d_knn, params2rendervar, params2cpu, save_params, save_variables, save_eval_helper, read_config, edge_aware_smoothness_per_pixel
+    o3d_knn, params2rendervar, params2cpu, save_params, save_variables, save_eval_helper, read_config, save_config, edge_aware_smoothness_per_pixel
 from external import calc_ssim, calc_psnr, build_rotation, densify, update_params_and_optimizer, inverse_sigmoid
 from pytorch3d.loss import chamfer_distance
 import argparse
@@ -145,7 +145,7 @@ def initialize_params(seq, md):
     """
     init_pt_cld = np.load(f"./data/{seq}/init_pt_cld.npz")["data"]
     seg = init_pt_cld[:, 6]   # segmented, e.g. [0, 0, 1, 1, 1 ..]
-    max_cams = 100
+    max_cams = 200
     sq_dist, _ = o3d_knn(init_pt_cld[:, :3], 3)
     mean3_sq_dist = sq_dist.mean(-1).clip(min=0.0000001)
     # depth 0 for depth gaussians
@@ -375,16 +375,20 @@ def save_eval_output_data(input_seq, exp_name, output_seq):
     extract_output_data.save_output_rgb_images(rgb_pred_npy, exp_name, output_seq)
 
 
-def train(configs):#seq, exp, output_seq, args):
+def main(configs):#seq, exp, output_seq, args):
+    
     if os.path.exists(f"./output/{configs['exp_name']}/{configs['output_seq']}"):
         print(f"Experiment {configs['exp_name']} for sequence {configs['input_seq']} already exists. Exiting.")
         return
+    
+    save_config(configs)
+
     md = json.load(open(f"./data/{configs['input_seq']}/train_meta.json", 'r'))  # metadata
     num_timesteps = len(md['fn'])
     params, variables = initialize_params(configs['input_seq'], md)
     
     # Params and variables for depth gaussians
-    depth_pt_cld=None
+    depth_pt_cld = None
     transmittance_mean = None
     grad_transmittance = None
     finite_element_transmittance = None
@@ -510,6 +514,6 @@ if __name__ == "__main__":
 
     s = time.time()
     for sequence in [configs['input_seq']]:#["basketball", "boxes", "football", "juggle", "softball", "tennis"]:
-        train(configs) # sequence, exp_name, output_seq, args)
+        main(configs) # sequence, exp_name, output_seq, args)
         torch.cuda.empty_cache()
     print(f"Total time: {time.time() - s:.2f}s")

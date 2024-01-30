@@ -30,12 +30,14 @@ If you find this helpful, please consider citing our work and the original imple
 ## Installation (original repo)
 ```bash
 # Install this repo (pytorch)
-git clone git@github.com:JonathonLuiten/Dynamic3DGaussians.git
-conda env create --file environment.yml
+git clone --recursive https://github.com/maurock/Dynamic3DGaussians.git
+conda env create --file environment.yaml
 conda activate dynamic_gaussians
+conda install pytorch3d -c pytorch3d
+
 
 # Install rendering code (cuda)
-git clone git@github.com:JonathonLuiten/diff-gaussian-rasterization-w-depth.git
+git clone --recursive https://github.com/maurock/depth-diff-gaussian-rasterization.git
 cd diff-gaussian-rasterization-w-depth
 python setup.py install
 pip install .

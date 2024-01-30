@@ -1,12 +1,12 @@
 # Settings
-input_seq: 'toaster'  # Path to the directory inside data/, e.g. toaster
-output_seq: 'toaster_15000_new_smooth01_FE05_temp' # Path to the directory inside output/<exp>, e.g. toaster_15000
-exp_name: 'exp1'  # Path to the experiment directory inside output/, e.g. exp1
+input_seq: ''  # Path to the directory inside data/, e.g. toaster
+output_seq: '' # Path to the directory inside output/<exp>, e.g. toaster_15000
+exp_name: ''  # Path to the experiment directory inside output/, e.g. exp1
 num_touches: 30   # Number of touches to simulate
 iterations: 15000  # Number of iterations for the training process
 
 # Saving
-save_eval_data: True  # Save evaluation data (True/False)
+save_eval_data: False  # Save evaluation data (True/False)
 
 # Mode
 explicit_depth: False   # Enforcing depth Gaussians directly (True/False)
@@ -15,7 +15,7 @@ density_mean: False   # Optimise density mean (True/False),
 lambda_density_mean: 0.1  # Weight for the density mean loss 
 grad_depth: False   # Optimise gradient of density  (True/False)
 lambda_grad_depth: 0.1  # Weight for the gradient depth loss
-transmittance: True  # Optimise transmittance (True/False)
+transmittance: False  # Optimise transmittance (True/False)
 lambda_transmittance: 1  # Weight for the transmittance loss
 grad_transmittance: False  # Optimise gradient of transmittance (True/False)
 lambda_grad_transmittance: 0.1  # Weight for the gradient transmittance loss

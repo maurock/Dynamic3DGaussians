@@ -196,7 +196,7 @@ def calculate_transmittance(
         params,
         depth_pt_cld,
         variables,
-        max_NN=50
+        max_NN=30
     ):
     """Compute the transmittance of the gaussians as the product of 1 - opacity for all gaussians"""
 
