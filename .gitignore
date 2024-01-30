@@ -5,5 +5,5 @@ output/
 .ipynb_checkpoints
 notebooks/
 
-!output/__init__/
-!data/__init__/
+!output/__init__.py
+!data/__init__.py
