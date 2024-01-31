@@ -122,7 +122,7 @@ def calculate_rot_vec(scene_data, is_fg):
 def render(w2c, k, timestep_data):
     with torch.no_grad():
         cam = setup_camera(w, h, k, w2c, near, far)
-        im, _, depth, = Renderer(raster_settings=cam)(**timestep_data)
+        im, _, depth, alpha = Renderer(raster_settings=cam)(**timestep_data)
         return im, depth
 
 

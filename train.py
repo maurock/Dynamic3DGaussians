@@ -392,7 +392,7 @@ def main(configs):#seq, exp, output_seq, args):
     transmittance_mean = None
     grad_transmittance = None
     finite_element_transmittance = None
-    if configs['explicit_depth'] or configs['density'] or configs['grad_depth'] or configs['transmittance'] or configs['grad_transmittance'] or configs['finite_element_transmittance']:
+    if configs['explicit_depth'] or configs['density'] or configs['grad_depth'] or configs['transmittance'] or configs['grad_transmittance'] or configs['finite_element_transmittance'] or configs['depth_smoothness']:
         params_depth_init, variables_depth_init, depth_pt_cld = initialise_depth_gaussians(configs['input_seq'], md, configs['num_touches'])
 
         # Combine params and variables for normal and depth gaussians

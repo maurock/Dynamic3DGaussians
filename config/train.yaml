@@ -1,12 +1,12 @@
 # Settings
-input_seq: ''  # Path to the directory inside data/, e.g. toaster
-output_seq: '' # Path to the directory inside output/<exp>, e.g. toaster_15000
-exp_name: ''  # Path to the experiment directory inside output/, e.g. exp1
+input_seq: 'toaster'  # Path to the directory inside data/, e.g. toaster
+output_seq: 'toaster_15000_smooth005_T01' # Path to the directory inside output/<exp>, e.g. toaster_15000
+exp_name: 'toaster'  # Path to the experiment directory inside output/, e.g. exp1
 num_touches: 30   # Number of touches to simulate
 iterations: 15000  # Number of iterations for the training process
 
 # Saving
-save_eval_data: False  # Save evaluation data (True/False)
+save_eval_data: True  # Save evaluation data (True/False)
 
 # Mode
 explicit_depth: False   # Enforcing depth Gaussians directly (True/False)
@@ -15,13 +15,13 @@ density_mean: False   # Optimise density mean (True/False),
 lambda_density_mean: 0.1  # Weight for the density mean loss 
 grad_depth: False   # Optimise gradient of density  (True/False)
 lambda_grad_depth: 0.1  # Weight for the gradient depth loss
-transmittance: False  # Optimise transmittance (True/False)
-lambda_transmittance: 1  # Weight for the transmittance loss
+transmittance: True  # Optimise transmittance (True/False)
+lambda_transmittance: 0.1  # Weight for the transmittance loss
 grad_transmittance: False  # Optimise gradient of transmittance (True/False)
 lambda_grad_transmittance: 0.1  # Weight for the gradient transmittance loss
 density: False  # Optimise density (True/False)
 lambda_density: 0.1  # Weight for the density loss
 finite_element_transmittance: False  # Optimise transmittance using finite differences (True/False)
 lambda_finite_element_transmittance: 0.5   # Weight for the finite element transmittance loss
-depth_smoothness: False  # Optimise depth smoothness (True/False)
-lambda_depth_smoothness: 0.1  # Weight for the depth smoothness loss
+depth_smoothness: True  # Optimise depth smoothness (True/False)
+lambda_depth_smoothness: 0.05  # Weight for the depth smoothness loss

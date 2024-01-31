@@ -34,13 +34,11 @@ git clone --recursive https://github.com/maurock/Dynamic3DGaussians.git
 conda env create --file environment.yaml
 conda activate dynamic_gaussians
 conda install pytorch3d -c pytorch3d
-
+pip install .
 
 # Install rendering code (cuda)
 git clone --recursive https://github.com/maurock/depth-diff-gaussian-rasterization.git
-cd diff-gaussian-rasterization-w-depth
-python setup.py install
-pip install .
+pip install ./depth-diff-gaussian-rasterization
 ```
 
 ## Run visualizer on pretrained models (original repo)
