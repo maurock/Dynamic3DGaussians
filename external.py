@@ -165,8 +165,8 @@ def inverse_sigmoid(x):
     return torch.log(x / (1 - x))
 
 
-def densify(params, variables, optimizer, i, explicit_depth):
-    if i <= 10000:
+def densify(params, variables, optimizer, i, explicit_depth, iterations_densify):
+    if i <= iterations_densify:
         variables = accumulate_mean2d_gradient(variables)
         grad_thresh = 0.0002
         if (i >= 500) and (i % 100 == 0):

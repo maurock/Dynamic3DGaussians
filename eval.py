@@ -1,7 +1,7 @@
 """Class to evaluate a single output on the test set."""
 import os
 import argparse
-from utils import utils_metrics, utils_mesh
+from utils import utils_mesh, utils_data
 import data
 import output
 import json
@@ -23,11 +23,6 @@ class Evaluator:
         self.experiment_dir = os.path.join(os.path.dirname(output.__file__), self.args.exp_name, self.args.output_seq)
         self.input_seq, self.data_dir = self.get_data_dir()
 
-        # Extract ground truth data for evaluation
-        # self.rgb_gt = self.get_rgb_gt()
-        # self.depth_gt = self.get_depth_gt()
-        # self.pc_gt = self.get_pc_gt()
-
         # Extract prediction data for evaluation
         if not self.check_pred_exists():
             rgb_pred_npy, depth_pred_npy, pc_pred_npy = extract_output_data.extract_output_data(
@@ -36,17 +31,6 @@ class Evaluator:
             extract_output_data.save_output_pointcloud(pc_pred_npy, self.args.exp_name, self.args.output_seq)
             extract_output_data.save_output_depth_images(depth_pred_npy, self.args.exp_name, self.args.output_seq)
             extract_output_data.save_output_rgb_images(rgb_pred_npy, self.args.exp_name, self.args.output_seq)
-        # else:
-        #     rgb_pred_npy, depth_pred_npy, pc_pred_npy = self.load_predictions()
-        # # self.rgb_pred = torch.tensor(rgb_pred_npy).cuda()
-        # self.depth_pred = torch.tensor(depth_pred_npy).cuda()
-        # self.pc_pred = torch.tensor(pc_pred_npy).cuda()
-
-        # Normalise depths
-        # self.depth_pred = helpers.normalise_depth(self.depth_pred, min_depth=1, max_depth=6)
-        # self.depth_gt = helpers.normalise_depth(self.depth_gt, min_depth=1, max_depth=6)
-        print()
-
 
     def get_data_dir(self):
         """Get the data directory from eval_helper.txt stored during training"""
@@ -54,80 +38,20 @@ class Evaluator:
         with open(eval_helper_path, "r") as f:
             input_seq = f.readline().strip()        
         return input_seq, os.path.join(os.path.dirname(data.__file__), input_seq)    
-    
-    def get_rgb_gt(self):
-        """Get the ground truth rgb images.
-        Return:
-            rgb_images: torch tensor of shape (num_images, H, W, 3)
-        """
-        meta_path = os.path.join(self.data_dir, "test_meta.json")
-        with open(meta_path, 'r') as file:
-            meta = json.load(file)
-        rgb_paths = [os.path.join(self.data_dir, 'ims', x) for x in meta['fn'][0]]
-        # Convert image path to torch tensor
-        rgb_images = torch.stack([helpers.load_rgb_image(x).permute(1, 2, 0) for x in rgb_paths],dim=0)
-        return rgb_images
-    
-    def get_depth_gt(self):
-        """Get the ground truth depth images.
-        Return:
-            rgb_images: torch tensor of shape (num_images, 3, H, W)
-        """
-        meta_path = os.path.join(self.data_dir, "test_meta.json")
-        with open(meta_path, 'r') as file:
-            meta = json.load(file)
-        disp_paths = [os.path.join(self.data_dir, 'depth', x.split(os.sep)[0], 'depth.tiff') for x in meta['fn'][0]]
-        # self._debug_depth(depth_paths)
-        # Convert image path to torch tensor
-        depth_images = torch.stack([helpers.load_disparity_image(x) for x in disp_paths], dim=0)
-        depth_images = helpers.convert_disparity_to_depth(depth_images)
-        return depth_images
-    
+       
     def _debug_depth(self, depth_paths):
         image = Image.open(depth_paths[0])
         image_array = np.array(image)
         image_array = image_array.astype(np.float32) * 255
         image = Image.fromarray(image_array)
         image.show()
-
-    def get_pc_gt(self):
-        """Get the ground truth point cloud."""
-        input_seq = self.data_dir.split(os.sep)[-1]
-        mesh_gt = trimesh.load_mesh(
-            os.path.join(
-                os.path.dirname(data.__file__),
-                'refnerf-blend', 'obj', f'{input_seq}.obj'
-            )
-        )
-        mesh_gt = utils_mesh.as_mesh(mesh_gt)
-        pc_gt = trimesh.sample.sample_surface(mesh_gt, 50000)[0]
-        pc_gt = torch.tensor(pc_gt).cuda()
-        return pc_gt
     
     def check_pred_exists(self):
         """Check if the prediction data exists."""
         pred_exists = (os.path.exists(os.path.join(self.experiment_dir, "eval", "rgb_pred.npz")) and
                   os.path.exists(os.path.join(self.experiment_dir, "eval", "depth_pred.npz")) and
                   os.path.exists(os.path.join(self.experiment_dir, "eval", "pc_pred.npz")))
-        return pred_exists
-
-    def load_rgb_pred(self):
-        """Load the prediction data."""
-        # Load data as numpy arrays
-        rgb_pred_npy = np.load(os.path.join(self.experiment_dir, "eval", "rgb_pred.npz"))['rgb']
-        return rgb_pred_npy
-    
-    def load_depth_pred(self):
-        """Load the prediction data."""
-        # Load data as numpy arrays
-        depth_pred_npy = np.load(os.path.join(self.experiment_dir, "eval", "depth_pred.npz"))['depth']
-        return depth_pred_npy
-    
-    def load_pc_pred(self):
-        """Load the prediction data."""
-        # Load data as numpy arrays
-        pc_pred_npy = np.load(os.path.join(self.experiment_dir, "eval", "pc_pred.npz"))['pts']
-        return pc_pred_npy
+        return pred_exists  
     
     def _debug_shapes(self):
         print(f'rgb_gt: {self.rgb_gt.shape}')
@@ -189,72 +113,93 @@ class Evaluator:
             # Display the combined image
             new_im.show()
 
-    def evaluate_rgb(self):
-        rgb_gt = self.get_rgb_gt()
-        rgb_pred_npy = self.load_rgb_pred()
-        rgb_pred = torch.tensor(rgb_pred_npy).cuda()
-        ssim_rgb = external.calc_ssim(rgb_gt, rgb_pred.clip(0,1)).item()
-        psnr_rgb = external.calc_psnr(rgb_gt, rgb_pred.clip(0,1)).mean().item()
-        torch.cuda.empty_cache()
 
+    def evaluate_rgb(self):
+        with torch.no_grad():
+            # Load ground truth and predicted RGB images
+            rgb_gt = utils_data.load_rgb_gt(self.data_dir)
+            rgb_pred = utils_data.load_prediction(self.experiment_dir, 'rgb')
+
+            # Compute metrics
+            batch_size = 100
+            ssims = []
+            psnrs = []
+            for i in range(0, len(rgb_gt), batch_size):
+                ssims.append(external.calc_ssim(rgb_gt[i:i+batch_size], rgb_pred[i:i+batch_size]))
+                psnrs.extend(external.calc_psnr(rgb_gt[i:i+batch_size], rgb_pred[i:i+batch_size]))
+            ssim_rgb = torch.stack(ssims).mean().item()
+            psnr_rgb = torch.cat(psnrs).mean().item()
+        torch.cuda.empty_cache()
         return ssim_rgb, psnr_rgb
     
     def evaluate_3D(self):
-        pc_gt = self.get_pc_gt()
-        pc_pred_npy = self.load_pc_pred()
-        pc_pred = torch.tensor(pc_pred_npy).cuda()
+        with torch.no_grad():
+            # Load ground truth and predicted pointclouds
+            pc_gt = utils_data.load_pointcloud_gt(self.data_dir)
+            pc_pred = utils_data.load_prediction(self.experiment_dir, 'pointcloud')
 
-        cd = chamfer_distance(pc_gt.unsqueeze(0), pc_pred.unsqueeze(0))[0].item()
-        emd = earth_mover_distance(pc_gt[:5000].cpu(), pc_pred[:5000].cpu()).item()
+            # Focus on bounding box around the object (to remove floaters)
+            pc_pred = utils_data.get_points_in_bbox(pc_pred)
+
+            # Compute metrics
+            cd = chamfer_distance(pc_gt.unsqueeze(0), pc_pred.unsqueeze(0))[0].item()
+            emd = earth_mover_distance(pc_gt[:5000].cpu(), pc_pred[:5000].cpu()).item()
         torch.cuda.empty_cache()
 
-        return cd, emd
+        return cd
     
     def evaluate_depth(self):
-        # Load
-        depth_gt = self.get_depth_gt()
-        depth_pred_npy = self.load_depth_pred()
-        depth_pred = torch.tensor(depth_pred_npy).cuda()
-        
-        # Normalise depth
-        depth_pred = helpers.normalise_depth(depth_pred, min_depth=1, max_depth=6)
-        depth_gt = helpers.normalise_depth(depth_gt, min_depth=1, max_depth=6)
-        ssim_depth = external.calc_ssim(depth_gt, depth_pred).item()
-        psnr_depth = external.calc_psnr(depth_gt, depth_pred).mean().item()
+        with torch.no_grad():
+            # Load ground truth and predicted depth images
+            depth_gt = utils_data.load_depth_gt(self.data_dir)
+            depth_pred = utils_data.load_prediction(self.experiment_dir, 'depth')
+            
+            # Normalise depth
+            depth_pred = helpers.normalise_depth(depth_pred, min_depth=1, max_depth=6)
+            depth_gt = helpers.normalise_depth(depth_gt, min_depth=1, max_depth=6)
+
+            # Compute metrics
+            ssim_depth = external.calc_ssim(depth_gt, depth_pred).item()
+            psnr_depth = external.calc_psnr(depth_gt, depth_pred).mean().item()
        
         torch.cuda.empty_cache()
         return ssim_depth, psnr_depth
     
+
+    def run_evaluation(self):
+        torch.cuda.empty_cache()
+        print('Evaluating...')
+        # Compute RGB metrics
+        ssim_rgb, psnr_rgb = self.evaluate_rgb()
+        # TODO LPIPS
+
+        # Compute 3D metrics
+        cd = self.evaluate_3D()
+
+        # Compute depth metrics
+        ssim_depth, psnr_depth = self.evaluate_depth()
+
+        # Save metrics as json file
+        metrics = {
+            'ssim_rgb': ssim_rgb,
+            'psnr_rgb': psnr_rgb,
+            'cd': cd,
+            #'emd': emd,
+            'ssim_depth': ssim_depth,
+            'psnr_depth': psnr_depth
+        }
+        with open(os.path.join(self.experiment_dir, "eval", "metrics.json"), 'w') as file:
+            json.dump(metrics, file, indent=4)
+
+        print("Evaluation complete. I hope it's what you expected!")
+        # Print metrics
+        for k, v in metrics.items():
+            print(f'{k}: {v}')
+
 def main(args):
     evaluator = Evaluator(args)
-
-    # evaluator._debug_shapes()
-
-    # Compute RGB metrics
-    ssim_rgb, psnr_rgb = evaluator.evaluate_rgb()
-    # TODO LPIPS
-
-    # Compute 3D metrics
-    cd, emd = evaluator.evaluate_3D()
-
-    # Compute depth metrics
-    ssim_depth, psnr_depth = evaluator.evaluate_depth()
-
-    # Save metrics as json file
-    metrics = {
-        'ssim_rgb': ssim_rgb,
-        'psnr_rgb': psnr_rgb,
-        'cd': cd,
-        'emd': emd,
-        'ssim_depth': ssim_depth,
-        'psnr_depth': psnr_depth
-    }
-    with open(os.path.join(evaluator.experiment_dir, "eval", "metrics.json"), 'w') as file:
-        json.dump(metrics, file, indent=4)
-
-    # Print metrics
-    for k, v in metrics.items():
-        print(f'{k}: {v}')
+    evaluator.run_evaluation()
+    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -263,7 +208,7 @@ if __name__ == "__main__":
     parser.add_argument("--output_seq", type=str, default="", help="Path to the run directory inside output/<exp>, e.g. toaster")
     args = parser.parse_args()
 
-    args.exp_name = 'exp1'
-    args.output_seq = 'toaster_15000_new_smooth01'
+    args.exp_name = 'toaster_ablation2'
+    args.output_seq = 'toaster_touch30_0'
 
     main(args)

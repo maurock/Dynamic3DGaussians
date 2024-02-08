@@ -1,0 +1,44 @@
+##################################################################
+# Default settings. Please do not touch this file, which is used to reproduce run_experiments.py
+# To change the configuration of a standard training, please use the train.yaml file. 
+##################################################################
+dataset: ''
+input_seq: ''  # Path to the directory inside data/, e.g. toaster
+output_seq: '' # Path to the directory inside output/<exp>, e.g. toaster_15000
+exp_name: ''  # Path to the experiment directory inside output/, e.g. exp1
+num_touches: 1   # Number of touches to simulate
+iterations: 1  # Number of iterations for the training process
+iterations_densify: 1  # Number of iterations for the densification process
+ratio_data: 1  # Ratio of the data to use for training
+
+# Saving
+save_eval_data: True  # Save evaluation data (True/False)
+eval: True
+
+# Mode
+explicit_depth: False   # Enforcing depth Gaussians directly (True/False)
+lambda_explicit_depth: 0.1   # Weight for the explicit depth loss
+
+density_mean: False   # Optimise density mean (True/False),
+lambda_density_mean: 0.1  # Weight for the density mean loss 
+
+grad_depth: False   # Optimise gradient of density  (True/False)
+lambda_grad_depth: 0.1  # Weight for the gradient depth loss
+
+transmittance: False  # Optimise transmittance (True/False)
+lambda_transmittance: 0.5  # Weight for the transmittance loss
+
+grad_transmittance: False  # Optimise gradient of transmittance (True/False)
+lambda_grad_transmittance: 0.1  # Weight for the gradient transmittance loss
+
+density: False  # Optimise density (True/False)
+lambda_density: 0.1  # Weight for the density loss
+
+finite_element_transmittance: False  # Optimise transmittance using finite differences (True/False)
+lambda_finite_element_transmittance: 0.5   # Weight for the finite element transmittance loss
+
+depth_smoothness: False  # Optimise depth smoothness (True/False)
+lambda_depth_smoothness: 0.05  # Weight for the depth smoothness loss
+
+alpha_zero_one: False  # Optimise alpha between 0 and 1 (True/False)
+lambda_alpha_zero_one: 0.01  # Weight for the alpha zero one loss

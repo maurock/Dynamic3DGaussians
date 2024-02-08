@@ -7,7 +7,7 @@ import numpy as np
 from utils import utils_colmap
 import json
 from PIL import Image as PIL_Image
-from utils import utils_data_making
+from utils import utils_data
 
 def get_intrinsics_from_txt(path):
     """Convert the file `cameras.txt` extracted from colmap (SIMPLE_PINHOLE) to camera intrinsics."""
@@ -86,7 +86,7 @@ def main(args):
             # Generate black images as everything is static currently. Images have the same size as the original images
             # Segmentation imaged need to be .PNG
             # TODO: change this to generate the segmentation images
-            utils_data_making.generate_seg_images(args.output_path, target_folder, num_cam, img_name)
+            utils_data.generate_seg_images(args.output_path, target_folder, num_cam, img_name)
             num_cam = str(eval(num_cam) + 1)
     else:
         # This is the case for images taken with a 3D renderer. Images are already in a folder per camera
@@ -101,7 +101,7 @@ def main(args):
             # Generate black images as everything is static currently. Images have the same size as the original images
             # Segmentation imaged need to be .PNG
             # TODO: change this to generate the segmentation images
-            utils_data_making.generate_seg_images(
+            utils_data.generate_seg_images(
                 args.output_path, target_folder, num_cam, img_name='render.jpg')
     
     # Generate init_pt_cld.npz: shape (N, 7) where N is the number of points

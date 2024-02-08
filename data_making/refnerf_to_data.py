@@ -12,15 +12,15 @@ import shutil
 from PIL import Image
 import json
 import numpy as np
-import utils.utils_data_making as utils_data_making
 import data_making
 from copy import deepcopy
 from scipy.spatial.transform import Rotation as R
-import utils.utils_colmap as utils_colmap
+from utils import utils_colmap, utils_data
 import trimesh
 import data
-import utils.utils_mesh as utils_mesh
 import helpers
+import torch
+import plotly.graph_objects as go
 
 # Custom function to extract the integer following 'r_'
 def _extract_number(file_path):
@@ -261,28 +261,69 @@ def point_triangulator(output_obj_dir, database_path, sparse_init_dir, sparse_bi
         print("Point triangulator finished.")
 
 
-def extract_ground_truth(output_obj_dir):
-    """Method to extract point cloud ground truth"""
+def extract_pointcloud_gt(output_obj_dir):
+    """Extract the ground truth point cloud from the disparity images in the training set.
+    Then, save the point cloud in a .npz file.
+    The reason why the point cloud is not extracted directly from the object mesh is that internal
+    structures are not visible from the outside. Extracting ground truth point cloud from disparity images
+    reflects the same visible surface information that would be captured by our reconstruction
+    Parameters:
+
+    Returns:
+
+    """
+    # Set paths
     pc_cld_path = os.path.join(output_obj_dir, 'gt_pt_cld.npz')
-    obj_path = os.path.join(os.path.dirname(data.__file__), "refnerf-blend", "obj", f"{os.path.basename(output_obj_dir)}.obj")
-    
-    if f"{os.path.basename(output_obj_dir)}" == 'car':    # Fix mismatch between refnerf and refnerf-blend
-        obj_path = os.path.join(os.path.dirname(data.__file__), "refnerf-blend", "obj", "musclecar.obj")
 
-    # Load mesh
-    try:
-        mesh = trimesh.load_mesh(obj_path)
-        mesh = utils_mesh.as_mesh(mesh)
+    # Load files
+    meta_train = utils_data.load_meta_file(output_obj_dir, 'train')
+    depth_images = utils_data.load_depth_gt(output_obj_dir, 'train')
+
+    # Defines variables
+    w, h = meta_train['w'], meta_train['h']
+    w2c_all = torch.tensor(meta_train['w2c'][0]).cuda().float()
+    k_all = torch.tensor(meta_train['k'][0]).cuda().float()
+    inv_w2c_all = torch.linalg.inv(w2c_all)     # [I, 4, 4]
+    inv_k_all = torch.linalg.inv(k_all)         # [I, 3, 3]
+    def_pix = torch.tensor(
+        np.stack(np.meshgrid(np.arange(w) + 0.5, np.arange(h) + 0.5, 1), -1).reshape(-1, 3)
+    ).cuda().float()  # [N, 3], where N=num_pixel
+    pointcloud_all = [] 
+
+    # Loop over the images
+    for idx in range(w2c_all.shape[0]):
+        # Calculate pixel coordinates in camera space
+        inv_k_cam = inv_k_all[idx]         # [3, 3]
+        inv_w2c_cam = inv_w2c_all[idx]     # [4, 4]
+        p_cam = (inv_k_cam @ def_pix.permute(1,0)).permute(1,0)    # [N, 3]
         
-        # Points on the object surface
-        pc = np.array(trimesh.sample.sample_surface_even(mesh, 50000)[0])
+        # Filter out pixels with depth=0
+        depth_1d = torch.tensor(depth_images[idx]).cuda().view(-1) # all depth values in a single tensor, shape [M]
+        valid_depth_mask = depth_1d != 0
+        p_cam = p_cam[valid_depth_mask] # remove pixels with depth=0
+        depth_1d = depth_1d[valid_depth_mask]
 
-        np.savez_compressed(pc_cld_path, gt_pt_cld=pc)
-    except:
-        print(f"Error in extracting ground truth point cloud for {os.path.basename(output_obj_dir)}")
-        pass
+        # Randomly sample 5000 points to reduce number of points stored
+        indexes = torch.randperm(p_cam.shape[0])
+        p_cam = p_cam[indexes][:5000]
+        depth_1d = depth_1d[indexes][:5000]
+
+        # Calculate 3D points in world frame
+        depth_cam = p_cam * depth_1d.unsqueeze(1)
+        depth_cam = torch.cat([depth_cam, torch.ones(5000,1).cuda()], dim=1) 
+        p_w = inv_w2c_cam @ depth_cam.permute(1,0)
+        p_w = p_w.permute(1,0)[:, :3]
+        p_w_cpu = utils_data.filter_pointcloud(
+            p_w.cpu().numpy(),
+            w2c_all[idx].cpu().numpy(),
+            ratio=1
+        )
         
+        pointcloud_all.extend(p_w_cpu)
 
+    pointcloud_all = np.array(pointcloud_all, dtype=np.float32)
+    np.savez_compressed(pc_cld_path, pts=pointcloud_all)
+        
 
 def main(args):
   objects = os.listdir(args.input_dir)
@@ -290,6 +331,8 @@ def main(args):
   for obj in objects:   # e.g. obj = "toaster"
     
     input_obj_dir = os.path.join(args.input_dir, obj)
+
+    output_obj_dir = os.path.join(args.output_dir, obj)
 
     # Read RefNeRF json files
     json_path_train = os.path.join(input_obj_dir, "transforms_train.json")
@@ -318,7 +361,6 @@ def main(args):
     )
   
     for i in range(0, len(sorted_ims)):
-        output_obj_dir = os.path.join(args.output_dir, obj)
         # Create image directory 
         cam_image_dir = os.path.join(output_obj_dir, "ims", str(i))
         depth_image_dir = os.path.join(output_obj_dir, "depth", str(i))
@@ -338,7 +380,7 @@ def main(args):
 
         # Generate black images as everything is static currently. Images have the same size as the original images
         # Segmentation imaged need to be .PNG
-        utils_data_making.generate_seg_images(
+        utils_data.generate_seg_images(
             output_obj_dir,
             cam_image_dir,
             str(i),
@@ -403,7 +445,8 @@ def main(args):
     remove_temporary_files(sparse_init_dir, sparse_bin_dir)
 
     # Extract ground truth point cloud
-    extract_ground_truth(output_obj_dir)
+    output_seq_dir = os.path.join(os.path.dirname(data.__file__), obj)
+    extract_pointcloud_gt(output_seq_dir)
 
 
 if __name__ == "__main__":

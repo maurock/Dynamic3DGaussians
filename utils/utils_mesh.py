@@ -1,11 +1,11 @@
 import torch
 import mcubes
 from utils.utils_gaussian import gaussian_3d_coeff, build_covariance_from_scaling_rotation
-import open3d as o3d
 import plotly.graph_objects as go
 import math
 import time
 import trimesh
+import open3d as o3d
 
 # Code adapted from https://github.com/dreamgaussian/dreamgaussian
 @torch.no_grad()
@@ -282,35 +282,6 @@ def fibonacci_hemisphere(samples, sphere_radius):
 
     return points
 
-def estimate_normals(depth_pt_cld):
-    """Given a point cloud, estimate normals.
-    Params:
-        - depth_pt_cld: [N, 3] torch.tensor"""
-    
-    # To align the normals correctly (ouward), we sample random points on a virtual
-    # hemisphere surrounding the object. We compute the closest distance to a point. 
-    # the position of that point determines the direction of the normal. 
-    points_on_hemisphere = fibonacci_hemisphere(1000, 10)
-    points_on_hemisphere = torch.tensor(points_on_hemisphere, dtype=torch.float32).cuda() # [1000, 3]
-    diff = points_on_hemisphere.unsqueeze(0) - depth_pt_cld.unsqueeze(1)   # [1, 1000, 3] - [N, 1, 3] --> [N, 1000, 3]
-    dist = torch.norm(diff, dim=-1) # [N, 1000]
-    idx_dist_min = dist.argmin(dim=-1) # [N]
-    dist_min = diff[torch.arange(dist.shape[0]), idx_dist_min]
-
-    # Compute normals
-    point_cloud_o3d = o3d.geometry.PointCloud()
-    point_cloud_o3d.points = o3d.utility.Vector3dVector(depth_pt_cld.cpu().numpy())
-    point_cloud_o3d.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
-    normals = torch.tensor(point_cloud_o3d.normals, dtype=torch.float32).cuda()
-
-    dot_prod = torch.sum(normals * dist_min, dim=-1)
-
-    # Flip normals if they are not pointing towards the camera
-    normals[dot_prod < 0] *= -1
-
-
-    return normals
-
 
 def _debug_normals(depth_pt_cld, normals):
     # Plot normals
@@ -339,7 +310,7 @@ def _debug_normals(depth_pt_cld, normals):
     fig.show()
 
     # Plot depth points and displaced points
-    disp_points = depth_pt_cld + 0.1 * normals
+    disp_points = depth_pt_cld + 0.001 * normals
     fig = go.Figure(data=[go.Scatter3d(
         x=depth_pt_cld.cpu()[:, 0],
         y=depth_pt_cld.cpu()[:, 1],
@@ -372,3 +343,33 @@ def as_mesh(scene_or_mesh):
     else:
         mesh = scene_or_mesh
     return mesh
+
+
+def estimate_normals(depth_pt_cld):
+    """Given a point cloud, estimate normals.
+    Params:
+        - depth_pt_cld: [N, 3] torch.tensor"""
+    
+    # To align the normals correctly (ouward), we sample random points on a virtual
+    # hemisphere surrounding the object. We compute the closest distance to a point. 
+    # the position of that point determines the direction of the normal. 
+    points_on_hemisphere = fibonacci_hemisphere(1000, 10)
+    points_on_hemisphere = torch.tensor(points_on_hemisphere, dtype=torch.float32).cuda() # [1000, 3]
+    diff = points_on_hemisphere.unsqueeze(0) - depth_pt_cld.unsqueeze(1)   # [1, 1000, 3] - [N, 1, 3] --> [N, 1000, 3]
+    dist = torch.norm(diff, dim=-1) # [N, 1000]
+    idx_dist_min = dist.argmin(dim=-1) # [N]
+    dist_min = diff[torch.arange(dist.shape[0]), idx_dist_min]
+
+    # Compute normals
+    point_cloud_o3d = o3d.geometry.PointCloud()
+    point_cloud_o3d.points = o3d.utility.Vector3dVector(depth_pt_cld.cpu().numpy())
+    point_cloud_o3d.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+    normals = torch.tensor(point_cloud_o3d.normals, dtype=torch.float32).cuda()
+
+    dot_prod = torch.sum(normals * dist_min, dim=-1)
+
+    # Flip normals if they are not pointing towards the camera
+    normals[dot_prod < 0] *= -1
+
+
+    return normals

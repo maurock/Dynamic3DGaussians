@@ -2,6 +2,7 @@
 Code is adapted from https://github.com/dreamgaussian/dreamgaussian"""
 import torch
 from external import build_rotation
+import torch.nn.functional as F
 
 def gaussian_3d_coeff(xyzs, covs):
     """Compute Gaussians exponent"""
@@ -246,7 +247,7 @@ def finite_element_transmittance(params, depth_pt_cld, normals, variables, f, va
         value_on = f(params, depth_pt_cld, variables)
     else:
         value_on = value_on.clone()
-    x1 = depth_pt_cld + 0.01 * normals
+    x1 = depth_pt_cld + 0.001 * normals
     value_out = f(params, x1, variables) # Transmittance over the point cloud + 0.001 * normals
     
     delta = value_out - value_on  # we want delta out-surface to be as high as possible
@@ -301,3 +302,73 @@ def finite_element_transmittance_fast(params,
     T_mean = T.mean(dim=1) # [2, 1]
     delta_T = T_mean[1] - T_mean[0] # we want delta out-surface to be as high as possible
     return delta_T
+
+
+def alpha_zero_one(alpha, eps=torch.tensor([1e-3]).cuda()):
+    """Push alpha to be closer to 0 or 1. The loss for intermediate values is higher."""
+    alpha_clipped = torch.clamp(alpha, min=eps, max=1-eps)
+    loss = torch.mean(torch.log(alpha_clipped) + torch.log(1 - alpha_clipped)) - torch.log(eps)[0]
+    return loss
+
+
+# Code adapted from https://github.com/brownvc/diffdiffdepth/blob/main/loss.py
+def edge_aware_smoothness_per_pixel(img, pred, i, alpha):
+    """ A measure of how closely the gradients of a predicted disparity/depth map match the 
+    gradients of the RGB image. 
+
+    Args:
+      img (c x 3 x h x w tensor): RGB image
+      pred (c x h x w tensor): predicted depth/disparity
+
+    Returns:
+      c x 1 tensor: measure of gradient matching (smoothness loss)
+    """
+   
+    def gradient_y(img):
+        gy = torch.cat([F.conv2d(img[:, i, :, :].unsqueeze(0),torch.Tensor([[2, 2, 4, 2, 2], [1, 1, 2, 1, 1], [0, 0, 0, 0, 0], [-1, -1, -2, -1, -1], [-2, -2, -4, -2, -2]]).cuda().view((1, 1, 5, 5)), padding=2) for i in range(img.shape[1])], 1)
+        # gy = torch.cat( [F.conv2d(img[:, i, :, :].unsqueeze(0), torch.Tensor([[1, 2, 1], [0, 0, 0], [-1, -2, -1]]).cuda().view((1, 1, 3, 3)), padding=1) for i in range(img.shape[1])], 1)
+
+        return gy
+
+    def gradient_x(img):
+        gx = torch.cat( [F.conv2d(img[:, i, :, :].unsqueeze(0), torch.Tensor([[2, 1, 0, -1, -2], [2, 1, 0, -1, -2], [4, 2, 0, -2, -4], [2, 1, 0, -1, -2], [2, 1, 0, -1, -2]]).cuda().view((1, 1, 5, 5)), padding=2) for i in range(img.shape[1])], 1)
+        # gx = torch.cat( [F.conv2d(img[:, i, :, :].unsqueeze(0), torch.Tensor([[1, 0, -1], [2, 0, -2], [1, 0, -1]]).cuda().view((1, 1, 3, 3)), padding=1) for i in range(img.shape[1])], 1)
+
+        return gx
+    
+    def create_border_mask(height, width, border_size):
+        """
+        Create a mask that is 0 at the borders and 1 elsewhere.
+        Args:
+        - height (int): The height of the mask.
+        - width (int): The width of the mask.
+        - border_size (int): The width of the border where the mask will be 0.
+
+        Returns:
+        - torch.Tensor: The border mask.
+        """
+        mask = torch.ones((height, width))
+        mask[:, :border_size] = 0  # Left border
+        mask[:, -border_size:] = 0  # Right border
+        mask[:border_size, :] = 0  # Top border
+        mask[-border_size:, :] = 0  # Bottom border
+        return mask
+    
+    # Prefiltering depth by multiplying it with alpha values
+    pred_gradients_x = gradient_x(pred).clip(-5, 5)
+    pred_gradients_y = gradient_y(pred).clip(-5, 5)
+
+    mask = create_border_mask(pred_gradients_x.shape[2], pred_gradients_x.shape[3], 2).cuda()
+    pred_gradients_x = pred_gradients_x * mask
+    pred_gradients_y = pred_gradients_y * mask
+    
+    image_gradients_x = gradient_x(img)
+    image_gradients_y = gradient_y(img)
+    
+    weights_x = torch.exp(-torch.mean(torch.abs(image_gradients_x), 1, keepdim=True))
+    weights_y = torch.exp(-torch.mean(torch.abs(image_gradients_y), 1, keepdim=True))
+       
+    smoothness_x = torch.abs(pred_gradients_x) * weights_x
+    smoothness_y = torch.abs(pred_gradients_y) * weights_y
+
+    return torch.mean(smoothness_x) + torch.mean(smoothness_y)

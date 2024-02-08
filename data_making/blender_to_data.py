@@ -2,7 +2,7 @@ import argparse
 import os
 from glob import glob
 import shutil
-from utils import utils_data_making, utils_colmap
+from utils import utils_data, utils_colmap
 import numpy as np
 import json
 
@@ -39,7 +39,7 @@ def main(args):
         # Generate black images as everything is static currently. Images have the same size as the original images
         # Segmentation imaged need to be .PNG
         # TODO: change this to generate real segmentation images
-        utils_data_making.generate_seg_images(args.output_path, target_folder, num_cam, img_name='render.jpg')
+        utils_data.generate_seg_images(args.output_path, target_folder, num_cam, img_name='render.jpg')
 
     # Copy point cloud from Blender folder to repository
     pc_source_folder = os.path.join(args.data_path, 'init_pt_cld.npz')

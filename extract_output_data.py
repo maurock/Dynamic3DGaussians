@@ -12,7 +12,7 @@ import matplotlib.cm as cm
 import output
 import argparse
 import helpers
-
+from utils import utils_data
 """
 Visualiser. This method was modified from the original code for better interactivity.
 - Press 'C' to change camera
@@ -113,23 +113,7 @@ def get_camera_positions(seq):
     return camera_positions
 
 
-def filter_pointcloud(pts, w2c):
-    """Filter pointcloud to reduce the number of points stored. Filtering is done by 
-    randomly sampling 0.1% of the points, as well as by eliminating points that are
-    too far from the camera.
-    Parameters:
-        pts (o3d.utility.Vector3dVector): Pointcloud of the scene, shape (P, 3)
-    Returns:
-        pts (np.array): Filtered pointcloud of the scene, shape (Q, 3)"""
-    pts = np.asarray(pts)
-    # Remove points that are too far from the camera
-    cam_centre = np.linalg.inv(w2c)[:3, 3]
-    dist = np.linalg.norm(pts - cam_centre, axis=1)
-    pts = pts[dist < 14.5]
-    # Sample N points from the total pointcloud
-    random_indices = np.random.choice(pts.shape[0], size=int(0.001 * len(pts)), replace=False)
-    pts = pts[random_indices]
-    return pts
+
 
 
 def save_output_pointcloud(pts_all, exp_name, output_seq):
@@ -216,8 +200,9 @@ def extract_output_data(input_seq, exp_name, output_seq, near=0.1, far=100000.0)
         vis.update_renderer()
 
         # Accumulate pointcloud
-        pts = filter_pointcloud(pts, w2c)
-        pts_all.extend(pts)
+        pts_npy = np.asarray(pts)
+        pts_npy = utils_data.filter_pointcloud(pts_npy, w2c)
+        pts_all.extend(pts_npy)
 
         # Accumulate depth images
         depth = depth.cpu().numpy()[0]

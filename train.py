@@ -8,15 +8,16 @@ from random import randint
 from tqdm import tqdm
 from diff_gaussian_rasterization import GaussianRasterizer as Renderer
 from helpers import setup_camera, l1_loss_v1, l1_loss_v2, weighted_l2_loss_v1, weighted_l2_loss_v2, quat_mult, \
-    o3d_knn, params2rendervar, params2cpu, save_params, save_variables, save_eval_helper, read_config, save_config, edge_aware_smoothness_per_pixel
+    o3d_knn, params2rendervar, params2cpu, save_params, save_variables, save_eval_helper, read_config, save_config
 from external import calc_ssim, calc_psnr, build_rotation, densify, update_params_and_optimizer, inverse_sigmoid
 from pytorch3d.loss import chamfer_distance
 import argparse
-from utils import utils_mesh, utils_gaussian
+from utils import utils_mesh, utils_gaussian, utils_data
 import time
 import os
 import extract_output_data
 import config
+from eval import Evaluator
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 # torch.autograd.set_detect_anomaly(True)
 
@@ -35,7 +36,10 @@ def initialise_depth_gaussians(seq, md, num_touches):
         print(f"Depth point cloud not found. Exiting.")
         exit()
 
-    depth_pt_cld = depth_pt_cld[:num_touches].reshape(-1, 3)
+    # Sample random touches
+    indexes = np.random.choice(depth_pt_cld.shape[0], size=num_touches, replace=False)
+    depth_pt_cld = depth_pt_cld[indexes].reshape(-1, 3)
+
     # seg set to 1 for depth gaussians
     seg = np.ones(shape=(depth_pt_cld.shape[0])) # segmented, e.g. [0, 0, 1, 1, 1 ..]
     # colours always set to grey
@@ -104,7 +108,7 @@ def combine_params_and_variables(params, params_depth, variables, variables_dept
     return params_combined, variables_combined
 
 
-def get_dataset(t, md, seq):
+def get_dataset(t, md, configs):
     """
     A dataset is a list of dictionaries, every element in the list refers to a camera at current current timestep `t`. 
     Example: 50 cameras -> `len(dataset) = 50`
@@ -116,7 +120,13 @@ def get_dataset(t, md, seq):
     - 'id': int of current camera id
     """
     dataset = []
-    for c in range(len(md['fn'][t])):  # md['fn'][t] is a list of the image paths at time t, e.g. [0/a.jpg, 3/a.jpg, ..] 
+    seq = configs['input_seq']
+    ratio = configs['ratio_data']
+
+    # N:10
+    data_indexes = utils_data.filter_dataset(len(md['fn'][t]), ratio)
+
+    for c in data_indexes:  # md['fn'][t] is a list of the image paths at time t, e.g. [0/a.jpg, 3/a.jpg, ..] 
                                        # meaning camera 0 -> image a.jpg, camera 3 -> image a.jpg, etc.
         w, h, k, w2c = md['w'], md['h'], md['k'][t][c], md['w2c'][t][c]
         cam = setup_camera(w, h, k, w2c, near=0.01, far=100.0)
@@ -146,8 +156,8 @@ def initialize_params(seq, md):
     init_pt_cld = np.load(f"./data/{seq}/init_pt_cld.npz")["data"]
     seg = init_pt_cld[:, 6]   # segmented, e.g. [0, 0, 1, 1, 1 ..]
     max_cams = 200
-    sq_dist, _ = o3d_knn(init_pt_cld[:, :3], 3)
-    mean3_sq_dist = sq_dist.mean(-1).clip(min=0.0000001)
+    sq_dist, _ = o3d_knn(init_pt_cld[:, :3], 3)   # return sq_sit of 3 closest points
+    mean3_sq_dist = sq_dist.mean(-1).clip(min=0.0000001, max=5)
     # depth 0 for depth gaussians
     depth = torch.zeros(size=(init_pt_cld.shape[0],)).cuda().float()
     # params are updated with gradient descent
@@ -216,7 +226,8 @@ def get_loss(
         transmittance_mean=None,
         grad_transmittance=None,
         finite_element_transmittance=None,
-        depth_smoothness=False):
+        depth_smoothness=False,
+        alpha_zero_one=False):
     losses = {}
 
     rendervar = params2rendervar(params)
@@ -281,8 +292,13 @@ def get_loss(
     if finite_element_transmittance is not None:
         losses['finite_element_transmittance'] = -finite_element_transmittance
 
-    if depth_smoothness == True:# and i>10000:
-        losses['depth_smoothness'] = edge_aware_smoothness_per_pixel(im.unsqueeze(0), depth.unsqueeze(0).clip(0,10))
+    if depth_smoothness == True and i>5000:
+        losses['depth_smoothness'] = utils_gaussian.edge_aware_smoothness_per_pixel(
+            curr_data['im'].unsqueeze(0), depth.unsqueeze(0).clip(0,10), i, alpha
+        )
+
+    if alpha_zero_one == True:
+        losses['alpha_zero_one'] = utils_gaussian.alpha_zero_one(alpha)
 
     loss_weights = {'im': 1.0, 'seg': 3.0, 'rigid': 4.0, 'rot': 4.0, 'iso': 2.0,
                     'floor': 2.0, 'bg': 20.0, 'soft_col_cons': 0.01, 
@@ -292,7 +308,8 @@ def get_loss(
                     'transmittance': configs['lambda_transmittance'],
                     'grad_transmittance': configs['lambda_grad_transmittance'],
                     'finite_element_transmittance': configs['lambda_finite_element_transmittance'],
-                    'depth_smoothness': configs['lambda_depth_smoothness']
+                    'depth_smoothness': configs['lambda_depth_smoothness'],
+                    'alpha_zero_one': configs['lambda_alpha_zero_one']
     }
 
     loss = sum([loss_weights[k] * v for k, v in losses.items()])
@@ -392,7 +409,7 @@ def main(configs):#seq, exp, output_seq, args):
     transmittance_mean = None
     grad_transmittance = None
     finite_element_transmittance = None
-    if configs['explicit_depth'] or configs['density'] or configs['grad_depth'] or configs['transmittance'] or configs['grad_transmittance'] or configs['finite_element_transmittance'] or configs['depth_smoothness']:
+    if configs['explicit_depth'] or configs['density'] or configs['grad_depth'] or configs['transmittance'] or configs['grad_transmittance'] or configs['finite_element_transmittance']:
         params_depth_init, variables_depth_init, depth_pt_cld = initialise_depth_gaussians(configs['input_seq'], md, configs['num_touches'])
 
         # Combine params and variables for normal and depth gaussians
@@ -409,7 +426,7 @@ def main(configs):#seq, exp, output_seq, args):
     output_params = []
 
     for t in range(num_timesteps):    
-        dataset = get_dataset(t, md, configs['input_seq'])
+        dataset = get_dataset(t, md, configs)
         todo_dataset = []
         is_initial_timestep = (t == 0)
         if not is_initial_timestep:
@@ -484,14 +501,15 @@ def main(configs):#seq, exp, output_seq, args):
                 transmittance_mean=transmittance_mean,
                 grad_transmittance=grad_transmittance,
                 finite_element_transmittance=finite_element_transmittance,
-                depth_smoothness=configs['depth_smoothness']
+                depth_smoothness=configs['depth_smoothness'],
+                alpha_zero_one=configs['alpha_zero_one']
             )
             loss.backward()
 
             with torch.no_grad():
                 report_progress(params, dataset[0], i, progress_bar, variables)
                 if is_initial_timestep:
-                    params, variables = densify(params, variables, optimizer, i, configs['explicit_depth'])
+                    params, variables = densify(params, variables, optimizer, i, configs['explicit_depth'], configs['iterations_densify'])
                 optimizer.step()
                 optimizer.zero_grad(set_to_none=True)
             
@@ -506,6 +524,14 @@ def main(configs):#seq, exp, output_seq, args):
     # Extract data for evaluation
     if configs['save_eval_data']:
         save_eval_output_data(configs['input_seq'], configs['exp_name'], configs['output_seq'])
+
+    if configs['eval']:
+        parser = argparse.ArgumentParser()
+        args = parser.parse_args()
+        args.dataset, args.exp_name, args.output_seq = configs['dataset'], configs['exp_name'], configs['output_seq']
+        evaluator = Evaluator(args)
+        evaluator.run_evaluation()
+
     
 
 if __name__ == "__main__":

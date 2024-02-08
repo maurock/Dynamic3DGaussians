@@ -7,8 +7,8 @@ from diff_gaussian_rasterization import GaussianRasterizer as Renderer
 from PIL import Image
 import yaml
 import cv2
-import torch.nn.functional as F
 import output
+import matplotlib.pyplot as plt
 
 def setup_camera(w, h, k, w2c, near=0.01, far=100):
     fx, fy, cx, cy = k[0][0], k[1][1], k[0][2], k[1][2]
@@ -29,7 +29,7 @@ def setup_camera(w, h, k, w2c, near=0.01, far=100):
         scale_modifier=1.0,
         viewmatrix=w2c,
         projmatrix=full_proj,
-        sh_degree=0,
+        sh_degree=6,
         campos=cam_center,
         prefiltered=False,
         debug=False
@@ -105,6 +105,7 @@ def params2cpu(params, is_initial_timestep):
 
 def save_params_static(to_save, output_params, seq, exp):
     """Use if I only have 1 timestamp"""
+    print('Saving parameters for evaluation... Only works for static scenes.')
     for k in output_params[0].keys():
         # Increase dimensionality by 1 to account for timesteps
         if k in ['means3D', 'rgb_colors', 'unnorm_rotations']:
@@ -114,6 +115,7 @@ def save_params_static(to_save, output_params, seq, exp):
 
     os.makedirs(f"./output/{exp}/{seq}", exist_ok=True)
     np.savez(f"./output/{exp}/{seq}/params", **to_save)
+    print('Parameters saved.')
 
 
 def save_params(output_params, seq, exp):
@@ -131,12 +133,13 @@ def save_params(output_params, seq, exp):
 
 
 def save_variables(output_variables, seq, exp):
-    print('Saving variables. Only works for static scenes.')
+    print('Saving variables for evaluation... Only works for static scenes.')
     to_save = {}
     for k, v in output_variables.items():
         to_save[k] = v.detach().cpu() if isinstance(v, torch.Tensor) else v
     os.makedirs(f"./output/{exp}/{seq}", exist_ok=True)
     np.savez(f"./output/{exp}/{seq}/variables", **to_save)
+    print('Variables saved.')
 
 
 def save_eval_helper(input_seq, output_seq, exp):
@@ -211,64 +214,6 @@ def save_config(config):
         yaml.dump(config, f)
 
 
-# Code adapted from https://github.com/brownvc/diffdiffdepth/blob/main/loss.py
-def edge_aware_smoothness_per_pixel(img, pred):
-    """ A measure of how closely the gradients of a predicted disparity/depth map match the 
-    gradients of the RGB image. 
-
-    Args:
-      img (c x 3 x h x w tensor): RGB image
-      pred (c x h x w tensor): predicted depth/disparity
-
-    Returns:
-      c x 1 tensor: measure of gradient matching (smoothness loss)
-    """
-   
-    def gradient_y(img):
-        gy = torch.cat([F.conv2d(img[:, i, :, :].unsqueeze(0),torch.Tensor([[2, 2, 4, 2, 2], [1, 1, 2, 1, 1], [0, 0, 0, 0, 0], [-1, -1, -2, -1, -1], [-2, -2, -4, -2, -2]]).cuda().view((1, 1, 5, 5)), padding=2) for i in range(img.shape[1])], 1)
-        return gy
-
-    def gradient_x(img):
-        gx = torch.cat( [F.conv2d(img[:, i, :, :].unsqueeze(0), torch.Tensor([[2, 1, 0, -1, -2], [2, 1, 0, -1, -2], [4, 2, 0, -2, -4], [2, 1, 0, -1, -2], [2, 1, 0, -1, -2]]).cuda().view((1, 1, 5, 5)), padding=2) for i in range(img.shape[1])], 1)
-        return gx
-    
-    def create_border_mask(height, width, border_size):
-        """
-        Create a mask that is 0 at the borders and 1 elsewhere.
-        Args:
-        - height (int): The height of the mask.
-        - width (int): The width of the mask.
-        - border_size (int): The width of the border where the mask will be 0.
-
-        Returns:
-        - torch.Tensor: The border mask.
-        """
-        mask = torch.ones((height, width))
-        mask[:, :border_size] = 0  # Left border
-        mask[:, -border_size:] = 0  # Right border
-        mask[:border_size, :] = 0  # Top border
-        mask[-border_size:, :] = 0  # Bottom border
-        return mask
-    
-    pred_gradients_x = gradient_x(pred)
-    pred_gradients_y = gradient_y(pred)
-
-    mask = create_border_mask(pred_gradients_x.shape[2], pred_gradients_x.shape[3], 2).cuda()
-    pred_gradients_x = pred_gradients_x * mask
-    pred_gradients_y = pred_gradients_y * mask
-    
-    image_gradients_x = gradient_x(img)
-    image_gradients_y = gradient_y(img)
-    
-    weights_x = torch.exp(-torch.mean(torch.abs(image_gradients_x), 1, keepdim=True))
-    weights_y = torch.exp(-torch.mean(torch.abs(image_gradients_y), 1, keepdim=True))
-       
-    smoothness_x = torch.abs(pred_gradients_x) * weights_x
-    smoothness_y = torch.abs(pred_gradients_y) * weights_y
-
-    return torch.mean(smoothness_x) + torch.mean(smoothness_y)
-
-
 def create_dirs(dirs):
     """Create required directories if they do not already exist.
     It accepts single directory or a list of directories."""
@@ -286,3 +231,71 @@ def render(w, h, k, w2c, near, far, timestep_data,train=False):
         return im, depth, alpha
         # im, radius, depth = Renderer(raster_settings=cam)(**timestep_data)
         # return im, depth
+    
+def debug_smoothness_loss(
+        img, 
+        pred,
+        pred_gradients_x, pred_gradients_y,
+        image_gradients_x, image_gradients_y,
+        weights_x, weights_y,
+        smoothness_x, smoothness_y
+    ):
+    """
+    img: shape (1, 3, h, w)
+    pred: shape (1, 1, h, w)
+    pred_gradients_x/y: shape (1, 1, h, w)
+    image_gradients_x/y: shape (1, 3, h, w)
+    weights_x/y: shape (1, 1, h, w)
+    smoothness_x/y: shape (1, 1, h, w)
+    
+    Debug edge_aware_smoothness_per_pixel function"""
+
+    fig = plt.figure(figsize=(20, 40))
+    fig.add_subplot(1, 6, 1)
+    plt.imshow(img[0].permute(1, 2, 0).detach().cpu())
+    plt.title('RGB Image X')
+    fig.add_subplot(1, 6, 2)
+    plt.imshow(pred[0, 0].detach().cpu())
+    plt.title('Predicted Depth')
+    fig.add_subplot(1, 6, 3)
+    plt.imshow(pred_gradients_x[0, 0].detach().cpu())
+    plt.title('Predicted Depth Gradient X')
+    fig.add_subplot(1, 6, 4)
+    plt.imshow(image_gradients_x[0].permute(1, 2, 0).detach().cpu())
+    plt.title('Image Gradient X')
+    fig.add_subplot(1, 6, 5)
+    plt.imshow(weights_x[0, 0].detach().cpu())
+    plt.title('Weights X')
+    fig.add_subplot(1, 6, 6)
+    plt.imshow(smoothness_x[0, 0].detach().cpu())
+    plt.title('Smoothness X')
+    plt.show()
+
+    fig = plt.figure(figsize=(20, 40))
+    fig.add_subplot(1, 6, 1)
+    plt.imshow(img[0].permute(1, 2, 0).detach().cpu())
+    plt.title('RGB Image Y')
+    fig.add_subplot(1, 6, 2)
+    plt.imshow(pred[0, 0].detach().cpu())
+    plt.title('Predicted Depth')
+    fig.add_subplot(1, 6, 3)
+    plt.imshow(pred_gradients_y[0, 0].detach().cpu())
+    plt.title('Predicted Depth Gradient')
+    fig.add_subplot(1, 6, 4)
+    plt.imshow(image_gradients_y[0].permute(1, 2, 0).detach().cpu())
+    plt.title('Image Gradient')
+    fig.add_subplot(1, 6, 5)
+    plt.imshow(weights_y[0, 0].detach().cpu())
+    plt.title('Weights')
+    fig.add_subplot(1, 6, 6)
+    plt.imshow(smoothness_y[0, 0].detach().cpu())
+    plt.title('Smoothness')
+    plt.show()
+
+
+
+
+
+
+    
+    
