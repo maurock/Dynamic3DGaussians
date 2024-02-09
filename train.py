@@ -32,7 +32,7 @@ def initialise_depth_gaussians(seq, md, num_touches):
         depth_pt_cld: torch tensor of depth point cloud, shape [N, 3]
     """
     try:
-        depth_pt_cld = np.load(f"./data/{seq}/depth_pt_cld.npz")['depth_points']
+        depth_pt_cld = np.load(f"{os.path.dirname(data.__file__)}/{seq}/depth_pt_cld.npz")['depth_points']
     except:
         print(f"Depth point cloud not found. Exiting.")
         exit()
@@ -132,9 +132,9 @@ def get_dataset(t, md, configs):
         w, h, k, w2c = md['w'], md['h'], md['k'][t][c], md['w2c'][t][c]
         cam = setup_camera(w, h, k, w2c, near=0.01, far=100.0)
         fn = md['fn'][t][c]
-        im = np.array(copy.deepcopy(Image.open(f"./data/{seq}/ims/{fn}")))
+        im = np.array(copy.deepcopy(Image.open(f"{os.path.dirname(data.__file__)}/{seq}/ims/{fn}")))
         im = torch.tensor(im).float().cuda().permute(2, 0, 1) / 255
-        seg = np.array(copy.deepcopy(Image.open(f"./data/{seq}/seg/{fn.replace('.jpg', '.png')}"))).astype(np.float32)
+        seg = np.array(copy.deepcopy(Image.open(f"{os.path.dirname(data.__file__)}/{seq}/seg/{fn.replace('.jpg', '.png')}"))).astype(np.float32)
         seg = torch.tensor(seg).float().cuda()
         seg_col = torch.stack((seg, torch.zeros_like(seg), 1 - seg))
         dataset.append({'cam': cam, 'im': im, 'seg': seg_col, 'id': c})
@@ -154,7 +154,7 @@ def initialize_params(seq, md):
         seq: name of the data sequence, e.g. "basketball"
         md: metadata
     """
-    init_pt_cld = np.load(f"./data/{seq}/init_pt_cld.npz")["data"]
+    init_pt_cld = np.load(f"{os.path.dirname(data.__file__)}/{seq}/init_pt_cld.npz")["data"]
     seg = init_pt_cld[:, 6]   # segmented, e.g. [0, 0, 1, 1, 1 ..]
     max_cams = 200
     sq_dist, _ = o3d_knn(init_pt_cld[:, :3], 3)   # return sq_sit of 3 closest points
