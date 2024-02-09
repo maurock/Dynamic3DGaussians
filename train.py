@@ -19,6 +19,7 @@ import extract_output_data
 import config
 import data
 from eval import Evaluator
+import output
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 # torch.autograd.set_detect_anomaly(True)
 
@@ -395,7 +396,7 @@ def save_eval_output_data(input_seq, exp_name, output_seq):
 
 def main(configs):#seq, exp, output_seq, args):
     
-    if os.path.exists(f"./output/{configs['exp_name']}/{configs['output_seq']}"):
+    if os.path.exists(f"{os.path.dirname(output.__file__)}/{configs['exp_name']}/{configs['output_seq']}"):
         print(f"Experiment {configs['exp_name']} for sequence {configs['input_seq']} already exists. Exiting.")
         return
     

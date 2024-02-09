@@ -9,6 +9,7 @@ import yaml
 import cv2
 import output
 import matplotlib.pyplot as plt
+import output
 
 def setup_camera(w, h, k, w2c, near=0.01, far=100):
     fx, fy, cx, cy = k[0][0], k[1][1], k[0][2], k[1][2]
@@ -113,8 +114,8 @@ def save_params_static(to_save, output_params, seq, exp):
         else:
             to_save[k] = output_params[0][k]
 
-    os.makedirs(f"./output/{exp}/{seq}", exist_ok=True)
-    np.savez(f"./output/{exp}/{seq}/params", **to_save)
+    os.makedirs(f"{os.path.dirname(output.__file__)}/{exp}/{seq}", exist_ok=True)
+    np.savez(f"{os.path.dirname(output.__file__)}/{exp}/{seq}/params", **to_save)
     print('Parameters saved.')
 
 
@@ -128,8 +129,8 @@ def save_params(output_params, seq, exp):
                 to_save[k] = np.stack([params[k] for params in output_params])
             else:
                 to_save[k] = output_params[0][k]
-        os.makedirs(f"./output/{exp}/{seq}", exist_ok=True)
-        np.savez(f"./output/{exp}/{seq}/params", **to_save)
+        os.makedirs(f"{os.path.dirname(output.__file__)}/{exp}/{seq}", exist_ok=True)
+        np.savez(f"{os.path.dirname(output.__file__)}/{exp}/{seq}/params", **to_save)
 
 
 def save_variables(output_variables, seq, exp):
@@ -137,16 +138,16 @@ def save_variables(output_variables, seq, exp):
     to_save = {}
     for k, v in output_variables.items():
         to_save[k] = v.detach().cpu() if isinstance(v, torch.Tensor) else v
-    os.makedirs(f"./output/{exp}/{seq}", exist_ok=True)
-    np.savez(f"./output/{exp}/{seq}/variables", **to_save)
+    os.makedirs(f"{os.path.dirname(output.__file__)}/{exp}/{seq}", exist_ok=True)
+    np.savez(f"{os.path.dirname(output.__file__)}/{exp}/{seq}/variables", **to_save)
     print('Variables saved.')
 
 
 def save_eval_helper(input_seq, output_seq, exp):
     """Save the object name to a text file for evaluation"""
-    if not os.path.exists(f"./output/{exp}/{output_seq}/eval"):
-        os.makedirs(f"./output/{exp}/{output_seq}/eval")
-    with open(f"./output/{exp}/{output_seq}/eval/eval_helper.txt", "w") as f:
+    if not os.path.exists(f"{os.path.dirname(output.__file__)}/{exp}/{output_seq}/eval"):
+        os.makedirs(f"{os.path.dirname(output.__file__)}/{exp}/{output_seq}/eval")
+    with open(f"{os.path.dirname(output.__file__)}/{exp}/{output_seq}/eval/eval_helper.txt", "w") as f:
         f.write(input_seq)
 
 
