@@ -17,6 +17,7 @@ import time
 import os
 import extract_output_data
 import config
+import data
 from eval import Evaluator
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 # torch.autograd.set_detect_anomaly(True)
@@ -400,7 +401,7 @@ def main(configs):#seq, exp, output_seq, args):
     
     save_config(configs)
 
-    md = json.load(open(f"./data/{configs['input_seq']}/train_meta.json", 'r'))  # metadata
+    md = json.load(open(f"{os.path.dirname(data.__file__)}/{configs['input_seq']}/train_meta.json", 'r'))  # metadata
     num_timesteps = len(md['fn'])
     params, variables = initialize_params(configs['input_seq'], md)
     
