@@ -62,7 +62,7 @@ def initialise_depth_gaussians(seq, md, num_touches):
         'log_scales': np.tile(np.log(np.sqrt(mean3_sq_dist))[..., None], (1, 3)),
         'cam_m': np.zeros((max_cams, 3)),
         'cam_c': np.zeros((max_cams, 3)),
-        'shs': np.zeros((depth_pt_cld.shape[0].shape[0], 16, 3)),
+        'shs': np.zeros((depth_pt_cld.shape[0], 16, 3)),
     }
     params = {k: torch.nn.Parameter(torch.tensor(v).cuda().float().contiguous().requires_grad_(True)) for k, v in params.items()}
 
