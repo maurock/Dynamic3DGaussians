@@ -30,7 +30,7 @@ def setup_camera(w, h, k, w2c, near=0.01, far=100):
         scale_modifier=1.0,
         viewmatrix=w2c,
         projmatrix=full_proj,
-        sh_degree=6,
+        sh_degree=3,
         campos=cam_center,
         prefiltered=False,
         debug=False

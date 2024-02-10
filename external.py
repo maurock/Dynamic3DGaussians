@@ -48,7 +48,18 @@ def calc_mse(img1, img2):
 
 
 def calc_psnr(img1, img2):
-    mse = ((img1 - img2) ** 2).view(img1.shape[0], -1).mean(1, keepdim=True)
+    """Calculate PSNR.
+    Args:
+        img1 (torch.Tensor): Image 1, shape [..., C, H, W]
+        img2 (torch.Tensor): Image 2, shape [..., C, H, W]
+    Returns:
+        torch.Tensor: PSNR value, shape [..., C, 1]
+    """
+    # Check if the input is batched
+    if img1.dim() == 4:  # [B, 3, H, W]
+        mse = ((img1 - img2) ** 2).view(img1.shape[0], img1.shape[1], -1).mean(2, keepdim=True)
+    elif img1.dim() == 3:  # Non-batched input [3, H, W]
+        mse = ((img1 - img2) ** 2).view(img1.shape[0], -1).mean(1, keepdim=True)
     return 20 * torch.log10(1.0 / torch.sqrt(mse))
 
 

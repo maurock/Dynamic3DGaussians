@@ -23,44 +23,17 @@ if __name__ == '__main__':
 
     # ABLATION 1: Performance at increasing number of touches
     # Define the new settings
-    # experiments = []
-    # touches = 0      # <============ CHOOSE THIS 
-    # for idx_run in range(0, 10):
-    #     experiments.append(
-    #         {
-    #             # Settings
-    #             'input_seq': 'toaster',  # Path to the directory inside data/, e.g. toaster
-    #             'output_seq': f'toaster_touch{touches}_{idx_run}', # Path to the directory inside output/<exp>, e.g. toaster_15000
-    #             'exp_name': 'toaster_ablation',  # Path to the experiment directory inside output/, e.g. exp1
-    #             'num_touches': touches,   # Number of touches to simulate
-    #             'iterations': 20000,  # Number of iterations for the training process
-    #             'iterations_densify': 15000,  # Number of iterations for the densification process
-    #             'ratio_data': 1.0,  # Ratio of the data to use for training
-
-    #             # Saving
-    #             'save_eval_data': True,  # Save evaluation data (True/False)
-    #             'eval': True,
-
-    #             # Mode
-    #             'transmittance': True,  # Optimise transmittance (True/False)
-    #             'lambda_transmittance': 0.5,  # Weight for the transmittance loss
-    #             'depth_smoothness': True,  # Optimise depth smoothness (True/False)
-    #             'lambda_depth_smoothness': 0.05  # Weight for the depth smoothness loss
-    #         }
-    #     )
-
-    # ABLATION 2: Consistency at equal number of touches
-    # Define the new settings
     experiments = []
-    touches = 30      # <============ CHOOSE THIS 
-    for idx_run in range(0, 8):
+    obj = 'toaster'
+    touches = [10, 20, 30, 40, 50]      # <============ CHOOSE THIS 
+    for touch in touches:
         experiments.append(
             {
                 # Settings
-                'input_seq': 'coffee',  # Path to the directory inside data/, e.g. toaster
-                'output_seq': f'coffee_touch{touches}_{idx_run}', # Path to the directory inside output/<exp>, e.g. toaster_15000
-                'exp_name': 'coffee_ablation2',  # Path to the experiment directory inside output/, e.g. exp1
-                'num_touches': touches,   # Number of touches to simulate
+                'input_seq': f'{obj}',  # Path to the directory inside data/, e.g. toaster
+                'output_seq': f'{obj}_touch{touch}', # Path to the directory inside output/<exp>, e.g. toaster_15000
+                'exp_name': f'{obj}_ablation1',  # Path to the experiment directory inside output/, e.g. exp1
+                'num_touches': touch,   # Number of touches to simulate
                 'iterations': 30000,  # Number of iterations for the training process
                 'iterations_densify': 20000,  # Number of iterations for the densification process
                 'ratio_data': 1.0,  # Ratio of the data to use for training
@@ -76,6 +49,34 @@ if __name__ == '__main__':
                 'lambda_depth_smoothness': 0.05  # Weight for the depth smoothness loss
             }
         )
+
+    # ABLATION 2: Consistency at equal number of touches
+    # Define the new settings
+    # experiments = []
+    # touches = 30      # <============ CHOOSE THIS 
+    # for idx_run in range(0, 8):
+    #     experiments.append(
+    #         {
+    #             # Settings
+    #             'input_seq': 'coffee',  # Path to the directory inside data/, e.g. toaster
+    #             'output_seq': f'coffee_touch{touches}_{idx_run}', # Path to the directory inside output/<exp>, e.g. toaster_15000
+    #             'exp_name': 'coffee_ablation2',  # Path to the experiment directory inside output/, e.g. exp1
+    #             'num_touches': touches,   # Number of touches to simulate
+    #             'iterations': 30000,  # Number of iterations for the training process
+    #             'iterations_densify': 20000,  # Number of iterations for the densification process
+    #             'ratio_data': 1.0,  # Ratio of the data to use for training
+
+    #             # Saving
+    #             'save_eval_data': True,  # Save evaluation data (True/False)
+    #             'eval': True,
+
+    #             # Mode
+    #             'transmittance': True,  # Optimise transmittance (True/False)
+    #             'lambda_transmittance': 0.5,  # Weight for the transmittance loss
+    #             'depth_smoothness': True,  # Optimise depth smoothness (True/False)
+    #             'lambda_depth_smoothness': 0.05  # Weight for the depth smoothness loss
+    #         }
+    #     )
 
 
 # Modify the YAML config

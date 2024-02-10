@@ -120,13 +120,17 @@ class Evaluator:
             rgb_gt = utils_data.load_rgb_gt(self.data_dir)
             rgb_pred = utils_data.load_prediction(self.experiment_dir, 'rgb')
 
+            # Prepare for PSNR and SSIM
+            rgb_gt = rgb_gt.permute(0, 3, 1, 2).float()
+            rgb_pred = rgb_pred.permute(0, 3, 1, 2).float()
+
             # Compute metrics
             batch_size = 100
             ssims = []
             psnrs = []
             for i in range(0, len(rgb_gt), batch_size):
                 ssims.append(external.calc_ssim(rgb_gt[i:i+batch_size], rgb_pred[i:i+batch_size]))
-                psnrs.extend(external.calc_psnr(rgb_gt[i:i+batch_size], rgb_pred[i:i+batch_size]))
+                psnrs.extend(external.calc_psnr(rgb_gt[i:i+batch_size], rgb_pred[i:i+batch_size]).mean(1))
             ssim_rgb = torch.stack(ssims).mean().item()
             psnr_rgb = torch.cat(psnrs).mean().item()
         torch.cuda.empty_cache()
@@ -208,7 +212,7 @@ if __name__ == "__main__":
     parser.add_argument("--output_seq", type=str, default="", help="Path to the run directory inside output/<exp>, e.g. toaster")
     args = parser.parse_args()
 
-    args.exp_name = 'toaster_ablation2'
-    args.output_seq = 'toaster_touch30_0'
+    args.exp_name = 'toaster_try'
+    args.output_seq = 'toaster_rgb000025'
 
     main(args)
