@@ -1,8 +1,8 @@
 # Settings
 dataset: 'RefNeRF'
 input_seq: 'toaster'  # Path to the directory inside data/, e.g. toaster
-output_seq: 'toaster_rgb0000025' # Path to the directory inside output/<exp>, e.g. toaster_15000
-exp_name: 'toaster_try'  # Path to the experiment directory inside output/, e.g. exp1
+output_seq: 'toaster_try2' # Path to the directory inside output/<exp>, e.g. toaster_15000
+exp_name: 'toaster_shs'  # Path to the experiment directory inside output/, e.g. exp1
 num_touches: 30   # Number of touches to simulate
 iterations: 20000  # Number of iterations for the training process
 iterations_densify: 15000  # Number of iterations for the densification process

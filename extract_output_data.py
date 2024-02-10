@@ -55,7 +55,8 @@ def load_scene_data(seq, exp, seg_as_col=False):
     for t in range(len(params['means3D'])):
         rendervar = {
             'means3D': params['means3D'][t],
-            'colors_precomp': params['rgb_colors'][t] if not seg_as_col else params['seg_colors'],
+            # 'colors_precomp': params['rgb_colors'][t] if not seg_as_col else params['seg_colors'],
+            'shs': params['shs'],
             'rotations': torch.nn.functional.normalize(params['unnorm_rotations'][t]),
             'opacities': torch.sigmoid(params['logit_opacities']),
             'scales': torch.exp(params['log_scales']),
@@ -111,9 +112,6 @@ def get_camera_positions(seq):
         camera_positions.append([w2c, k])
     
     return camera_positions
-
-
-
 
 
 def save_output_pointcloud(pts_all, exp_name, output_seq):
@@ -241,10 +239,10 @@ if __name__ == "__main__":
     args.save_rgb = True
 
     # Input
-    input_seq = 'toaster'
+    input_seq = ''
     # Output
-    exp_name = "exp1"
-    output_seq = "toaster_15000_new"
+    exp_name = ""
+    output_seq = ""
 
     # Visualise
     for sequence in [output_seq]: #, "boxes", "football", "juggle", "softball", "tennis"]:

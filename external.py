@@ -201,7 +201,8 @@ def densify(params, variables, optimizer, i, explicit_depth, iterations_densify)
                                          torch.max(torch.exp(params['log_scales']), dim=1).values > 0.01 * variables[
                                              'scene_radius'])
             n = 2  # number to split into
-            new_params = {k: v[to_split].repeat(n, 1) for k, v in params.items() if k not in ['cam_m', 'cam_c']}
+            new_params = {k: v[to_split].repeat(n, 1) for k, v in params.items() if k not in ['cam_m', 'cam_c', 'shs']}
+            new_params['shs'] = params['shs'][to_split].repeat(n, 1, 1)
             stds = torch.exp(params['log_scales'])[to_split].repeat(n, 1)
             means = torch.zeros((stds.size(0), 3), device="cuda")
             samples = torch.normal(mean=means, std=stds)

@@ -67,7 +67,8 @@ def load_scene_data(seq, exp, seg_as_col=False):
     for t in range(len(params['means3D'])):
         rendervar = {
             'means3D': params['means3D'][t],
-            'colors_precomp': params['rgb_colors'][t] if not seg_as_col else params['seg_colors'],
+            #'colors_precomp': params['rgb_colors'][t] if not seg_as_col else params['seg_colors'],
+            'shs': params['shs'],
             'rotations': torch.nn.functional.normalize(params['unnorm_rotations'][t]),
             'opacities': torch.sigmoid(params['logit_opacities']),
             'scales': torch.exp(params['log_scales']),
@@ -363,8 +364,8 @@ if __name__ == "__main__":
     # Input
     input_seq = 'toaster'
     # Output
-    exp_name = "toaster"
-    output_seq = "toaster_10000_T05_smooth005_ratio01"
+    exp_name = "toaster_shs"
+    output_seq = "toaster_try1"
     # Visualise
     for sequence in [output_seq]: #, "boxes", "football", "juggle", "softball", "tennis"]:
         visualize(input_seq, exp_name, sequence)

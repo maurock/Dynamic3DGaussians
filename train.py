@@ -12,7 +12,7 @@ from helpers import setup_camera, l1_loss_v1, l1_loss_v2, weighted_l2_loss_v1, w
 from external import calc_ssim, calc_psnr, build_rotation, densify, update_params_and_optimizer, inverse_sigmoid
 from pytorch3d.loss import chamfer_distance
 import argparse
-from utils import utils_mesh, utils_gaussian, utils_data
+from utils import utils_mesh, utils_gaussian, utils_data, utils_sh
 import time
 import os
 import extract_output_data
@@ -62,7 +62,7 @@ def initialise_depth_gaussians(seq, md, num_touches):
         'log_scales': np.tile(np.log(np.sqrt(mean3_sq_dist))[..., None], (1, 3)),
         'cam_m': np.zeros((max_cams, 3)),
         'cam_c': np.zeros((max_cams, 3)),
-
+        'shs': np.zeros((depth_pt_cld.shape[0].shape[0], 16, 3)),
     }
     params = {k: torch.nn.Parameter(torch.tensor(v).cuda().float().contiguous().requires_grad_(True)) for k, v in params.items()}
 
@@ -157,6 +157,11 @@ def initialize_params(seq, md):
     """
     init_pt_cld = np.load(f"{os.path.dirname(data.__file__)}/{seq}/init_pt_cld.npz")["data"]
     seg = init_pt_cld[:, 6]   # segmented, e.g. [0, 0, 1, 1, 1 ..]
+    rgb_colors = init_pt_cld[:, 3:6]   # colours
+    # initialise SH
+    shs_init = np.zeros((init_pt_cld.shape[0], 16, 3))  # assuming max degree = 3
+    shs_rgb = utils_sh.RGB2SH(rgb_colors)
+    shs_init[:, 0, :] = shs_rgb
     max_cams = 200
     sq_dist, _ = o3d_knn(init_pt_cld[:, :3], 3)   # return sq_sit of 3 closest points
     mean3_sq_dist = sq_dist.mean(-1).clip(min=0.0000001, max=5)
@@ -165,13 +170,14 @@ def initialize_params(seq, md):
     # params are updated with gradient descent
     params = {
         'means3D': init_pt_cld[:, :3],    # (num_gaussians, 3)
-        'rgb_colors': init_pt_cld[:, 3:6],    # (num_gaussians, 3)
+        #'rgb_colors': init_pt_cld[:, 3:6],    # (num_gaussians, 3)
         'seg_colors': np.stack((seg, np.zeros_like(seg), 1 - seg), -1),
         'unnorm_rotations': np.tile([1, 0, 0, 0], (seg.shape[0], 1)),
         'logit_opacities': np.zeros((seg.shape[0], 1)),
         'log_scales': np.tile(np.log(np.sqrt(mean3_sq_dist))[..., None], (1, 3)),
         'cam_m': np.zeros((max_cams, 3)),
         'cam_c': np.zeros((max_cams, 3)),
+        'shs': shs_init
     }
     params = {k: torch.nn.Parameter(torch.tensor(v).cuda().float().contiguous().requires_grad_(True)) for k, v in
               params.items()}
@@ -202,13 +208,14 @@ def get_depth_gaussians(params, variables):
 def initialize_optimizer(params, variables):
     lrs = {
         'means3D': 0.0000016 * variables['scene_radius'], #0.00016 * variables['scene_radius'],
-        'rgb_colors': 0.00025, # 0.025,
+        #'rgb_colors': 0.00025, # 0.025,
         'seg_colors': 0.0,
         'unnorm_rotations': 0.001,
         'logit_opacities': 0.05,
         'log_scales': 0.001,
         'cam_m': 1e-4,
         'cam_c': 1e-4,
+        'shs': 0.00025
     }
     param_groups = [{'params': [v], 'name': k, 'lr': lrs[k]} for k, v in params.items()]
     return torch.optim.Adam(param_groups, lr=0.0, eps=1e-15)
@@ -396,12 +403,6 @@ def save_eval_output_data(input_seq, exp_name, output_seq):
 
 def main(configs):#seq, exp, output_seq, args):
     
-    if os.path.exists(f"{os.path.dirname(output.__file__)}/{configs['exp_name']}/{configs['output_seq']}"):
-        print(f"Experiment {configs['exp_name']} for sequence {configs['input_seq']} already exists. Exiting.")
-        return
-    
-    save_config(configs)
-
     md = json.load(open(f"{os.path.dirname(data.__file__)}/{configs['input_seq']}/train_meta.json", 'r'))  # metadata
     num_timesteps = len(md['fn'])
     params, variables = initialize_params(configs['input_seq'], md)
@@ -519,6 +520,11 @@ def main(configs):#seq, exp, output_seq, args):
         output_params.append(params2cpu(params, is_initial_timestep))
         if is_initial_timestep:
             variables = initialize_post_first_timestep(params, variables, optimizer)
+
+    if os.path.exists(f"{os.path.dirname(output.__file__)}/{configs['exp_name']}/{configs['output_seq']}"):
+        print(f"Experiment {configs['exp_name']} for sequence {configs['input_seq']} already exists. Exiting.")
+        return
+    save_config(configs)
     save_params(output_params, configs['output_seq'], configs['exp_name'])
     save_variables(variables, configs['output_seq'], configs['exp_name'])
     save_eval_helper(configs['input_seq'], configs['output_seq'], configs['exp_name'])
