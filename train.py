@@ -23,7 +23,7 @@ import output
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 # torch.autograd.set_detect_anomaly(True)
 
-def initialise_depth_gaussians(seq, md, num_touches):
+def initialise_depth_gaussians(seq, md, num_touches, random_selection=False):
     """
     Generate gaussians for depth point cloud. Differently from standard Gaussians,
     the 'depth' variable is set to 1.
@@ -37,10 +37,13 @@ def initialise_depth_gaussians(seq, md, num_touches):
     except:
         print(f"Depth point cloud not found. Exiting.")
         exit()
-
-    # Sample random touches
-    indexes = np.random.choice(depth_pt_cld.shape[0], size=num_touches, replace=False)
-    depth_pt_cld = depth_pt_cld[indexes].reshape(-1, 3)
+        
+    if random_selection:
+        # Sample random touches
+        indexes = np.random.choice(depth_pt_cld.shape[0], size=num_touches, replace=False)
+        depth_pt_cld = depth_pt_cld[indexes].reshape(-1, 3)
+    else:
+        depth_pt_cld = depth_pt_cld[:num_touches].reshape(-1, 3)
 
     # seg set to 1 for depth gaussians
     seg = np.ones(shape=(depth_pt_cld.shape[0])) # segmented, e.g. [0, 0, 1, 1, 1 ..]
