@@ -1,7 +1,6 @@
 
 import torch
 import numpy as np
-import open3d as o3d
 import time
 from diff_gaussian_rasterization import GaussianRasterizer as Renderer
 from helpers import setup_camera
@@ -71,8 +70,6 @@ def load_scene_data(seq, exp, seg_as_col=False):
 
 
 def rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None):
-    d_near = 0.9
-    d_far = 5.0
     invk = torch.inverse(torch.tensor(k).cuda().float())
     c2w = torch.inverse(torch.tensor(w2c).cuda().float())
     radial_depth = depth[0].reshape(-1)
@@ -90,15 +87,8 @@ def rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None):
     pts4 = torch.concat((pts_cam, pix_ones), 1)
     # pts is points in 3D world coords
     pts = (c2w @ pts4.T).T[:, :3]
-    if show_depth:
-        # print(np.amin(z_depth.cpu().numpy()), np.amax(z_depth.cpu().numpy()))
-        cols = ((z_depth - d_near) / (d_far - d_near))[:, None].repeat(1, 3)
-    else:
-        cols = torch.permute(im, (1, 2, 0)).reshape(-1, 3)
-    pts = o3d.utility.Vector3dVector(pts.contiguous().double().cpu().numpy())
-    cols = o3d.utility.Vector3dVector(cols.contiguous().double().cpu().numpy())
-
-    return pts, cols
+    
+    return pts
 
 
 def get_camera_positions(seq):
@@ -143,8 +133,6 @@ def extract_output_data(input_seq, exp_name, output_seq, near=0.1, far=100000.0)
     scene_data, is_fg = load_scene_data(output_seq, exp_name)
 
     # With callback
-    vis = o3d.visualization.Visualizer()
-    vis.create_window(width=int(w * view_scale), height=int(h * view_scale), visible=True)
     camera_index = [0]
     mode = [RENDER_MODE]
     camera_positions = get_camera_positions(input_seq)
@@ -153,25 +141,10 @@ def extract_output_data(input_seq, exp_name, output_seq, near=0.1, far=100000.0)
 
     # im, depth = render(w2c, k, scene_data[0])
     im, depth, alpha = helpers.render(w, h, k, w2c, near, far, scene_data[0])
-    init_pts, init_cols = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = init_pts
-    pcd.colors = init_cols
-    vis.add_geometry(pcd)
+    init_pts = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
 
     view_k = k * view_scale
     view_k[2, 2] = 1
-    view_control = vis.get_view_control()
-    cparams = o3d.camera.PinholeCameraParameters()
-    cparams.extrinsic = w2c
-    cparams.intrinsic.intrinsic_matrix = view_k
-    cparams.intrinsic.height = int(h * view_scale)
-    cparams.intrinsic.width = int(w * view_scale)
-    view_control.convert_from_pinhole_camera_parameters(cparams, allow_arbitrary=True)
-
-    render_options = vis.get_render_option()
-    render_options.point_size = view_scale
-    render_options.light_on = False
 
     # Accumulate all points for plotting
     pts_all = []
@@ -181,24 +154,13 @@ def extract_output_data(input_seq, exp_name, output_seq, near=0.1, far=100000.0)
     for i in range(len(camera_positions)):
        
         w2c, k = camera_positions[i]
-        cam_params = view_control.convert_to_pinhole_camera_parameters()
-        cam_params.extrinsic = w2c
-        view_control.convert_from_pinhole_camera_parameters(cam_params, allow_arbitrary=True)
 
         # im, depth = render(w2c, k, scene_data[0])
         im, depth, alpha = helpers.render(w, h, k, w2c, near, far, scene_data[0])
-        pts, cols = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
-
-        pcd.points = pts
-        pcd.colors = cols
-        vis.update_geometry(pcd)
-
-        if not vis.poll_events():
-            break
-        vis.update_renderer()
+        pts = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
 
         # Accumulate pointcloud
-        pts_npy = np.asarray(pts)
+        pts_npy = np.array(pts.cpu())
         pts_npy = utils_data.filter_pointcloud(pts_npy, w2c)
         pts_all.extend(pts_npy)
 
@@ -208,11 +170,6 @@ def extract_output_data(input_seq, exp_name, output_seq, near=0.1, far=100000.0)
 
         # Accumulate rgb images
         im_all.append(im.cpu().numpy().transpose(1, 2, 0))
-
-    vis.destroy_window()
-    del view_control
-    del vis
-    del render_options     
 
     im_all = np.array(im_all) 
     depth_all = np.array(depth_all)

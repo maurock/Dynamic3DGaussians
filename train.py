@@ -8,7 +8,7 @@ from random import randint
 from tqdm import tqdm
 from diff_gaussian_rasterization import GaussianRasterizer as Renderer
 from helpers import setup_camera, l1_loss_v1, l1_loss_v2, weighted_l2_loss_v1, weighted_l2_loss_v2, quat_mult, \
-    o3d_knn, params2rendervar, params2cpu, save_params, save_variables, save_eval_helper, read_config, save_config
+    params2rendervar, params2cpu, save_params, save_variables, save_eval_helper, read_config, save_config, scipy_knn
 from external import calc_ssim, calc_psnr, build_rotation, densify, update_params_and_optimizer, inverse_sigmoid
 from pytorch3d.loss import chamfer_distance
 import argparse
@@ -53,7 +53,9 @@ def initialise_depth_gaussians(seq, md, num_touches, random_selection=False):
     depth = torch.ones(size=(depth_pt_cld.shape[0],)).cuda().float()
 
     max_cams = 100
-    sq_dist, _ = o3d_knn(depth_pt_cld[:, :3], 3)
+    # sq_dist_1, _ = o3d_knn(depth_pt_cld[:, :3], 3)
+    dist, _ = scipy_knn(depth_pt_cld[:, :3], 3)
+    sq_dist = (dist**2)
     mean3_sq_dist = sq_dist.mean(-1).clip(min=0.0000001)
     # params are updated with gradient descent
     params = {
@@ -166,7 +168,9 @@ def initialize_params(seq, md):
     shs_rgb = utils_sh.RGB2SH(rgb_colors)
     shs_init[:, 0, :] = shs_rgb
     max_cams = 200
-    sq_dist, _ = o3d_knn(init_pt_cld[:, :3], 3)   # return sq_sit of 3 closest points
+    # sq_dist, _ = o3d_knn(init_pt_cld[:, :3], 3)   
+    dist, _ = scipy_knn(init_pt_cld[:, :3], 3)   # return sq_sit of 3 closest points
+    sq_dist = (dist**2)
     mean3_sq_dist = sq_dist.mean(-1).clip(min=0.0000001, max=5)
     # depth 0 for depth gaussians
     depth = torch.zeros(size=(init_pt_cld.shape[0],)).cuda().float()
@@ -363,7 +367,9 @@ def initialize_post_first_timestep(params, variables, optimizer, num_knn=20):
     init_fg_pts = params['means3D'][is_fg]
     init_bg_pts = params['means3D'][~is_fg]
     init_bg_rot = torch.nn.functional.normalize(params['unnorm_rotations'][~is_fg])
-    neighbor_sq_dist, neighbor_indices = o3d_knn(init_fg_pts.detach().cpu().numpy(), num_knn)
+    # neighbor_sq_dist, neighbor_indices = o3d_knn(init_fg_pts.detach().cpu().numpy(), num_knn)
+    neighbor_dist, neighbor_indices = scipy_knn(init_fg_pts.detach().cpu().numpy(), num_knn)
+    neighbor_sq_dist = neighbor_dist**2
     neighbor_weight = np.exp(-2000 * neighbor_sq_dist)
     neighbor_dist = np.sqrt(neighbor_sq_dist)
     variables["neighbor_indices"] = torch.tensor(neighbor_indices).cuda().long().contiguous()
@@ -423,10 +429,10 @@ def main(configs):#seq, exp, output_seq, args):
 
     grad_depth = None
     density_mean = None
-    if configs['grad_depth'] or configs['grad_transmittance'] or configs['finite_element_transmittance']:
-        normals = utils_mesh.estimate_normals(depth_pt_cld)
-        # Debug normals by visualising them using plotly. Normals are visualised as vectors.
-        utils_mesh._debug_normals(depth_pt_cld, normals)    
+    # if configs['grad_depth'] or configs['grad_transmittance'] or configs['finite_element_transmittance']:
+    #     normals = utils_mesh.estimate_normals(depth_pt_cld)
+    #     # Debug normals by visualising them using plotly. Normals are visualised as vectors.
+    #     utils_mesh._debug_normals(depth_pt_cld, normals)    
 
     optimizer = initialize_optimizer(params, variables)
     output_params = []

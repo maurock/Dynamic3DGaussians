@@ -1,6 +1,6 @@
 import torch
 import os
-import open3d as o3d
+# import open3d as o3d
 import numpy as np
 from diff_gaussian_rasterization import GaussianRasterizationSettings as Camera
 from diff_gaussian_rasterization import GaussianRasterizer as Renderer
@@ -10,6 +10,8 @@ import cv2
 import output
 import matplotlib.pyplot as plt
 import output
+import numpy as np
+from scipy.spatial import KDTree
 
 def setup_camera(w, h, k, w2c, near=0.01, far=100):
     fx, fy, cx, cy = k[0][0], k[1][1], k[0][2], k[1][2]
@@ -83,17 +85,29 @@ def quat_mult(q1, q2):
     return torch.stack([w, x, y, z]).T
 
 
-def o3d_knn(pts, num_knn):
-    indices = []
-    sq_dists = []
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(np.ascontiguousarray(pts, np.float64))
-    pcd_tree = o3d.geometry.KDTreeFlann(pcd)
-    for p in pcd.points:
-        [_, i, d] = pcd_tree.search_knn_vector_3d(p, num_knn + 1)
-        indices.append(i[1:])
-        sq_dists.append(d[1:])
-    return np.array(sq_dists), np.array(indices)
+def scipy_knn(pts, num_knn):
+    # Create a KDTree for efficient nearest-neighbor lookup
+    tree = KDTree(pts)
+    
+    # Query the KDTree for the k nearest neighbors of each point in pts
+    # Adding 1 to num_knn to account for the query point itself being returned
+    distances, indices = tree.query(pts, k=num_knn + 1)
+    
+    # Exclude the first element of each query result because it is the point itself
+    return distances[:, 1:], indices[:, 1:]
+
+
+# def o3d_knn(pts, num_knn):
+#     indices = []
+#     sq_dists = []
+#     pcd = o3d.geometry.PointCloud()
+#     pcd.points = o3d.utility.Vector3dVector(np.ascontiguousarray(pts, np.float64))
+#     pcd_tree = o3d.geometry.KDTreeFlann(pcd)
+#     for p in pcd.points:
+#         [_, i, d] = pcd_tree.search_knn_vector_3d(p, num_knn + 1)
+#         indices.append(i[1:])
+#         sq_dists.append(d[1:])
+#     return np.array(sq_dists), np.array(indices)
 
 
 def params2cpu(params, is_initial_timestep):
