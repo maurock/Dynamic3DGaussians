@@ -60,7 +60,7 @@ def initialise_depth_gaussians(seq, md, num_touches, random_selection=False):
     # params are updated with gradient descent
     params = {
         'means3D': depth_pt_cld,    # (num_gaussians, 3)
-        'rgb_colors': rgb,    # (num_gaussians, 3)
+        #'rgb_colors': rgb,    # (num_gaussians, 3)
         'seg_colors': np.stack((seg, np.zeros_like(seg), 1 - seg), -1),
         'unnorm_rotations': np.tile([1, 0, 0, 0], (seg.shape[0], 1)),
         'logit_opacities': np.array(inverse_sigmoid(torch.ones(size=(depth_pt_cld.shape[0], 1)) * 0.99999)),
