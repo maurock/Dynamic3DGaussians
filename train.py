@@ -56,7 +56,7 @@ def initialise_depth_gaussians(seq, md, num_touches, random_selection=False):
     # sq_dist_1, _ = o3d_knn(depth_pt_cld[:, :3], 3)
     dist, _ = scipy_knn(depth_pt_cld[:, :3], 3)
     sq_dist = (dist**2)
-    mean3_sq_dist = sq_dist.mean(-1).clip(min=0.0000001)
+    mean3_sq_dist = sq_dist.mean(-1).clip(min=0.0000001, max=1)
     # params are updated with gradient descent
     params = {
         'means3D': depth_pt_cld,    # (num_gaussians, 3)
