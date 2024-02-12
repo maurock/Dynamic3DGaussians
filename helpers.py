@@ -131,7 +131,7 @@ def save_params_static(to_save, output_params, seq, exp):
 
     os.makedirs(f"{os.path.dirname(output.__file__)}/{exp}/{seq}", exist_ok=True)
     np.savez(f"{os.path.dirname(output.__file__)}/{exp}/{seq}/params", **to_save)
-    print('Parameters saved.')
+    print(f'Parameters saved in {os.path.dirname(output.__file__)}/{exp}/{seq}/params')
 
 
 def save_params(output_params, seq, exp):
@@ -148,6 +148,7 @@ def save_params(output_params, seq, exp):
         np.savez(f"{os.path.dirname(output.__file__)}/{exp}/{seq}/params", **to_save)
 
 
+
 def save_variables(output_variables, seq, exp):
     print('Saving variables for evaluation... Only works for static scenes.')
     to_save = {}
@@ -155,7 +156,7 @@ def save_variables(output_variables, seq, exp):
         to_save[k] = v.detach().cpu() if isinstance(v, torch.Tensor) else v
     os.makedirs(f"{os.path.dirname(output.__file__)}/{exp}/{seq}", exist_ok=True)
     np.savez(f"{os.path.dirname(output.__file__)}/{exp}/{seq}/variables", **to_save)
-    print('Variables saved.')
+    print(f'Variables saved in {os.path.dirname(output.__file__)}/{exp}/{seq}/variables.')
 
 
 def save_eval_helper(input_seq, output_seq, exp):
@@ -164,6 +165,7 @@ def save_eval_helper(input_seq, output_seq, exp):
         os.makedirs(f"{os.path.dirname(output.__file__)}/{exp}/{output_seq}/eval")
     with open(f"{os.path.dirname(output.__file__)}/{exp}/{output_seq}/eval/eval_helper.txt", "w") as f:
         f.write(input_seq)
+    print(f'Eval helper saved in {os.path.dirname(output.__file__)}/{exp}/{output_seq}/eval/eval_helper.txt')
 
 
 def load_rgb_image(path):
@@ -228,6 +230,7 @@ def save_config(config):
         os.makedirs(os.path.dirname(path))
     with open(path, 'w') as f:
         yaml.dump(config, f)
+    print(f'Config saved at {path}')
 
 
 def create_dirs(dirs):
