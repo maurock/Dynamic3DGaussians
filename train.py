@@ -23,7 +23,7 @@ import output
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 # torch.autograd.set_detect_anomaly(True)
 
-def initialise_depth_gaussians(seq, md, num_touches, random_selection=False):
+def initialise_depth_gaussians(seq, md, num_touches, random_selection):
     """
     Generate gaussians for depth point cloud. Differently from standard Gaussians,
     the 'depth' variable is set to 1.
@@ -248,6 +248,8 @@ def get_loss(
 
     rendervar = params2rendervar(params)
     rendervar['means2D'].retain_grad()
+
+    
     im, radius, depth, alpha = Renderer(raster_settings=curr_data['cam'],train=True)(**rendervar)
 
     curr_id = curr_data['id']
@@ -422,7 +424,7 @@ def main(configs):#seq, exp, output_seq, args):
     grad_transmittance = None
     finite_element_transmittance = None
     if configs['explicit_depth'] or configs['density'] or configs['grad_depth'] or configs['transmittance'] or configs['grad_transmittance'] or configs['finite_element_transmittance']:
-        params_depth_init, variables_depth_init, depth_pt_cld = initialise_depth_gaussians(configs['input_seq'], md, configs['num_touches'])
+        params_depth_init, variables_depth_init, depth_pt_cld = initialise_depth_gaussians(configs['input_seq'], md, configs['num_touches'], configs['random_selection'])
 
         # Combine params and variables for normal and depth gaussians
         params, variables = combine_params_and_variables(params, params_depth_init, variables, variables_depth_init)
