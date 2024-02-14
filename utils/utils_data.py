@@ -133,7 +133,7 @@ def load_prediction(experiment_dir, pred_type=''):
         experiment_dir (str): Absolute path to the result directory, e.g. <path_to_output>/toaster_exp/toaster_15000
         pred_type (str): Type of data prediction to load: 'rgb', 'depth', 'pointcloud'
     Return:
-        data (torch.Tensor): Predicted data
+        data (np.array): Predicted data
                              rgb: [num_images, H, W, 3],
                              depth: [num_images, H, W],
                              pointcloud: [num_points, 3]
@@ -150,9 +150,8 @@ def load_prediction(experiment_dir, pred_type=''):
     }
     # Load data as numpy arrays
     data_pred_npy = np.load(os.path.join(experiment_dir, "eval", mapping[pred_type].file_name))[mapping[pred_type].key]
-    # Convert to torch tensor
-    data_pred = torch.tensor(data_pred_npy).cuda().float()
-    return data_pred
+    
+    return data_pred_npy
 
 
 def get_points_in_bbox(

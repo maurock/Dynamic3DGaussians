@@ -24,13 +24,14 @@ class Evaluator:
         self.input_seq, self.data_dir = self.get_data_dir()
 
         # Extract prediction data for evaluation
-        if not self.check_pred_exists():
+        if (not self.check_pred_exists()) and (self.args.save_eval_data):
             rgb_pred_npy, depth_pred_npy, pc_pred_npy = extract_output_data.extract_output_data(
                 self.input_seq, self.args.exp_name, self.args.output_seq
-            )                         
-            extract_output_data.save_output_pointcloud(pc_pred_npy, self.args.exp_name, self.args.output_seq)
-            extract_output_data.save_output_depth_images(depth_pred_npy, self.args.exp_name, self.args.output_seq)
-            extract_output_data.save_output_rgb_images(rgb_pred_npy, self.args.exp_name, self.args.output_seq)
+            )                   
+            if self.args.save_eval_data:      
+                extract_output_data.save_output_pointcloud(pc_pred_npy, self.args.exp_name, self.args.output_seq)
+                extract_output_data.save_output_depth_images(depth_pred_npy, self.args.exp_name, self.args.output_seq)
+                extract_output_data.save_output_rgb_images(rgb_pred_npy, self.args.exp_name, self.args.output_seq)
 
     def get_data_dir(self):
         """Get the data directory from eval_helper.txt stored during training"""
@@ -114,11 +115,11 @@ class Evaluator:
             new_im.show()
 
 
-    def evaluate_rgb(self):
+    def evaluate_rgb(self, rgb_pred_npy):
         with torch.no_grad():
             # Load ground truth and predicted RGB images
             rgb_gt = utils_data.load_rgb_gt(self.data_dir)
-            rgb_pred = utils_data.load_prediction(self.experiment_dir, 'rgb')
+            rgb_pred = torch.tensor(rgb_pred_npy).float().cuda()
 
             # Prepare for PSNR and SSIM
             rgb_gt = rgb_gt.permute(0, 3, 1, 2).float()
@@ -136,11 +137,11 @@ class Evaluator:
         torch.cuda.empty_cache()
         return ssim_rgb, psnr_rgb
     
-    def evaluate_3D(self):
+    def evaluate_3D(self, pc_pred_npy):
         with torch.no_grad():
             # Load ground truth and predicted pointclouds
             pc_gt = utils_data.load_pointcloud_gt(self.data_dir)
-            pc_pred = utils_data.load_prediction(self.experiment_dir, 'pointcloud')
+            pc_pred = torch.tensor(pc_pred_npy).float().cuda()
 
             # Focus on bounding box around the object (to remove floaters)
             pc_pred = utils_data.get_points_in_bbox(pc_pred)
@@ -152,11 +153,11 @@ class Evaluator:
 
         return cd
     
-    def evaluate_depth(self):
+    def evaluate_depth(self, depth_pred_npy):
         with torch.no_grad():
             # Load ground truth and predicted depth images
             depth_gt = utils_data.load_depth_gt(self.data_dir)
-            depth_pred = utils_data.load_prediction(self.experiment_dir, 'depth')
+            depth_pred = torch.tensor(depth_pred_npy).float().cuda()
             
             # Normalise depth
             depth_pred = helpers.normalise_depth(depth_pred, min_depth=1, max_depth=6)
@@ -173,15 +174,25 @@ class Evaluator:
     def run_evaluation(self):
         torch.cuda.empty_cache()
         print('Evaluating...')
+
+        if (not self.check_pred_exists()):
+            rgb_pred_npy, depth_pred_npy, pc_pred_npy = extract_output_data.extract_output_data(
+                self.input_seq, self.args.exp_name, self.args.output_seq
+            )  
+        else:
+            rgb_pred_npy = utils_data.load_prediction(self.experiment_dir, 'rgb')
+            depth_pred_npy = utils_data.load_prediction(self.experiment_dir, 'depth')
+            pc_pred_npy = utils_data.load_prediction(self.experiment_dir, 'pointcloud')
+
         # Compute RGB metrics
-        ssim_rgb, psnr_rgb = self.evaluate_rgb()
+        ssim_rgb, psnr_rgb = self.evaluate_rgb(rgb_pred_npy)
         # TODO LPIPS
 
         # Compute 3D metrics
-        cd = self.evaluate_3D()
+        cd = self.evaluate_3D(pc_pred_npy)
 
         # Compute depth metrics
-        ssim_depth, psnr_depth = self.evaluate_depth()
+        ssim_depth, psnr_depth = self.evaluate_depth(depth_pred_npy)
 
         # Save metrics as json file
         metrics = {
@@ -210,9 +221,11 @@ if __name__ == "__main__":
     parser.add_argument("--dataset", type=str, default="RefNeRF", help="Dataset name. Choose between 'RefNeRF'")
     parser.add_argument("--exp_name", type=str, default="", help="Path to the experiment directory inside output/, e.g. exp1")
     parser.add_argument("--output_seq", type=str, default="", help="Path to the run directory inside output/<exp>, e.g. toaster")
+    parser.add_argument("--save_eval_data", action="store_true", default=False, help="Save evaluation data")
+
     args = parser.parse_args()
 
-    args.exp_name = 'toaster_try'
-    args.output_seq = 'toaster_rgb000025'
+    args.exp_name = 'ablation4_toaster'
+    args.output_seq = 'toaster_ratio01_2'
 
     main(args)

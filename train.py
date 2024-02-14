@@ -547,11 +547,10 @@ def main(configs):#seq, exp, output_seq, args):
     if configs['eval']:
         parser = argparse.ArgumentParser()
         args = parser.parse_args()
-        args.dataset, args.exp_name, args.output_seq = configs['dataset'], configs['exp_name'], configs['output_seq']
+        args.dataset, args.exp_name, args.output_seq, args.save_eval_data = configs['dataset'], configs['exp_name'], configs['output_seq'], configs['save_eval_data']
         evaluator = Evaluator(args)
         evaluator.run_evaluation()
 
-    
 
 if __name__ == "__main__":
     config_path = os.path.join(os.path.dirname(config.__file__), "train.yaml")
