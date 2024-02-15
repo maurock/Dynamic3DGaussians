@@ -212,7 +212,7 @@ def get_depth_gaussians(params, variables):
     return params_depth
 
 
-def initialize_optimizer(params, variables):
+def initialize_optimizer(params, variables, configs):
     lrs = {
         'means3D': 0.0000016 * variables['scene_radius'], #0.00016 * variables['scene_radius'],
         #'rgb_colors': 0.00025, # 0.025,
@@ -222,7 +222,7 @@ def initialize_optimizer(params, variables):
         'log_scales': 0.001,
         'cam_m': 1e-4,
         'cam_c': 1e-4,
-        'shs': 0.00025
+        'shs': configs['lr_shs']  # 0.00025
     }
     param_groups = [{'params': [v], 'name': k, 'lr': lrs[k]} for k, v in params.items()]
     return torch.optim.Adam(param_groups, lr=0.0, eps=1e-15)
@@ -436,7 +436,7 @@ def main(configs):#seq, exp, output_seq, args):
     #     # Debug normals by visualising them using plotly. Normals are visualised as vectors.
     #     utils_mesh._debug_normals(depth_pt_cld, normals)    
 
-    optimizer = initialize_optimizer(params, variables)
+    optimizer = initialize_optimizer(params, variables, configs)
     output_params = []
 
     for t in range(num_timesteps):    
@@ -526,7 +526,31 @@ def main(configs):#seq, exp, output_seq, args):
                     params, variables = densify(params, variables, optimizer, i, configs['explicit_depth'], configs['iterations_densify'])
                 optimizer.step()
                 optimizer.zero_grad(set_to_none=True)
-            
+
+                # TEMPORARY EVALUATION ##############################################################################
+                if i % 10 == 0 and i>0: 
+                    intermediate_params = [params2cpu(params, is_initial_timestep)]
+                    save_config(configs)
+                    save_params(intermediate_params, configs['output_seq'], configs['exp_name'])
+                    save_variables(variables, configs['output_seq'], configs['exp_name'])
+                    save_eval_helper(configs['input_seq'], configs['output_seq'], configs['exp_name'])
+
+                    parser = argparse.ArgumentParser()
+                    args = parser.parse_args()
+                    args.dataset, args.exp_name, args.output_seq, args.save_eval_data = configs['dataset'], configs['exp_name'], configs['output_seq'], configs['save_eval_data']
+                    evaluator = Evaluator(args)
+                    rgb_pred_npy, depth_pred_npy, pc_pred_npy = extract_output_data.extract_output_data(
+                        evaluator.input_seq, evaluator.args.exp_name, evaluator.args.output_seq
+                    ) 
+                    ssim_rgb, psnr_rgb = evaluator.evaluate_rgb(rgb_pred_npy)
+                    metrics = {
+                        'ssim_rgb': ssim_rgb,
+                        'psnr_rgb': psnr_rgb                        
+                    }
+                    with open(os.path.join(evaluator.experiment_dir, "eval", f"metrics_{i}.json"), 'w') as file:
+                        json.dump(metrics, file, indent=4)
+                    # TEMPORARY EVALUATION ##############################################################################
+
         progress_bar.close()
         output_params.append(params2cpu(params, is_initial_timestep))
         if is_initial_timestep:
