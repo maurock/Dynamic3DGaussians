@@ -528,7 +528,7 @@ def main(configs):#seq, exp, output_seq, args):
                 optimizer.zero_grad(set_to_none=True)
 
                 # TEMPORARY EVALUATION ##############################################################################
-                if i%5000 == 0 and i>0: 
+                if (i+1) % 5000 == 0: 
                     intermediate_params = [params2cpu(params, is_initial_timestep)]
                     save_config(configs)
                     save_params(intermediate_params, configs['output_seq'], configs['exp_name'])
