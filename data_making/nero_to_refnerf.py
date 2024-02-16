@@ -18,7 +18,7 @@ def read_pickle(pkl_path):
 
 if __name__ == '__main__':
     # Set folders
-    output_dir = os.path.join(os.path.dirname(data.__file__), 'glossy-synthetic-3DGS')
+    output_dir = os.path.join(os.path.dirname(data.__file__), 'glossy-synthetic-Blender')
     train_dir = os.path.join(os.path.dirname(data.__file__), 'GlossySynthetic')
     test_dir = os.path.join(os.path.dirname(data.__file__), 'glossy-synthetic-nvs')
 
@@ -31,7 +31,7 @@ if __name__ == '__main__':
 
         scenes = train_scenes if split == 'train' else test_scenes
 
-        for idx, scene in enumerate(scenes[:1]):
+        for idx, scene in enumerate(scenes):
 
             print(f'[INFO] Process scene {scene}') 
 
@@ -111,17 +111,17 @@ if __name__ == '__main__':
                 imsave(f'{output_split_dir}/r_{img_id}.png', image)
                 imsave(f'{output_split_dir}/r_{img_id}_depth.tiff', depth)
 
-        # Save ply as .npz - only for training, as the path doesnt exist in the test dataset
-        points_file = os.path.join(input_scene_dir, "eval_pts.ply")
-        if os.path.exists(points_file):
-            pc_cld_path = os.path.join(output_scene_dir, 'gt_pt_cld.npz')
+            # Save ply as .npz - only for training, as the path doesnt exist in the test dataset
+            points_file = os.path.join(input_scene_dir, "eval_pts.ply")
+            if os.path.exists(points_file):
+                pc_cld_path = os.path.join(output_scene_dir, 'gt_pt_cld.npz')
 
-            with open(points_file, 'rb') as f:
-                plydata = PlyData.read(f)
+                with open(points_file, 'rb') as f:
+                    plydata = PlyData.read(f)
 
-            x, y, z = plydata['vertex']['x'], plydata['vertex']['y'], plydata['vertex']['z']
-            pointcloud_all = np.array(list(zip(x, y, z)))
+                x, y, z = plydata['vertex']['x'], plydata['vertex']['y'], plydata['vertex']['z']
+                pointcloud_all = np.array(list(zip(x, y, z)))
 
-            np.savez_compressed(pc_cld_path, pts=pointcloud_all)
+                np.savez_compressed(pc_cld_path, pts=pointcloud_all)
 
-        print(f"[INFO] Scene {scene} processed.")
+            print(f"[INFO] Scene {scene} processed.")

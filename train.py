@@ -411,6 +411,13 @@ def save_eval_output_data(input_seq, exp_name, output_seq):
 
 def main(configs):#seq, exp, output_seq, args):
     
+    if configs['dataset'] == 'ShinyBlender':
+        configs['input_seq'] = os.path.join('shiny-blender-3DGS', configs['input_seq'])
+    elif configs['dataset'] == 'GlossySynthetic':
+        configs['input_seq'] = os.path.join('glossy-synthetic-3DGS', configs['input_seq'])
+    else:
+        raise ValueError('Invalid dataset name')
+    
     md = json.load(open(f"{os.path.dirname(data.__file__)}/{configs['input_seq']}/train_meta.json", 'r'))  # metadata
     num_timesteps = len(md['fn'])
     params, variables = initialize_params(configs['input_seq'], md)
@@ -578,7 +585,7 @@ if __name__ == "__main__":
     configs = read_config(config_path)
 
     s = time.time()
-    for sequence in [configs['input_seq']]:#["basketball", "boxes", "football", "juggle", "softball", "tennis"]:
+    for sequence in [configs['input_seq']]:
         main(configs) # sequence, exp_name, output_seq, args)
         torch.cuda.empty_cache()
     print(f"Total time: {time.time() - s:.2f}s")

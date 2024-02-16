@@ -361,11 +361,19 @@ def visualize(input_seq, exp, output_seq):
 
 
 if __name__ == "__main__":
+
+    # Dataset
+    # dataset_dir = "shiny-blender-3DGS"
+    dataset_dir = "glossy-synthetic-3DGS"
+
     # Input
-    input_seq = 'cat'
+    obj = "cat"
+    input_seq = os.path.join(dataset_dir, obj)
+
     # Output
     exp_name = "cat_try"
     output_seq = "cat_1"
+
     # Visualise
     for sequence in [output_seq]: #, "boxes", "football", "juggle", "softball", "tennis"]:
         visualize(input_seq, exp_name, sequence)

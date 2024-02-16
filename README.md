@@ -98,9 +98,9 @@ python blender_to_data.py --data_path Blender/PROJECT_FOLDER/ --output_path data
 Coming soon.
 
 ## Shiny Blender
-The Shiny Blender dataset provided in the [official implementation]9(https://dorverbin.github.io/refnerf/) needs to be adapted to be processed by this repository. You can either download the adapted dataset or manually adapt it yourself by following the following instructions. We recommend downloading the data we provide as the depth images provided in the official repository are quantised.
+The Shiny Blender dataset provided in the [official implementation](https://dorverbin.github.io/refnerf/) needs to be adapted to be processed by this repository. You can either download the adapted dataset or manually adapt it yourself by following the following instructions. We recommend downloading the data we provide as the depth images provided in the official repository are quantised.
 
-### Download data (Recommended)
+### Download data (**Recommended**)
 You can download the Shiny Blender dataset adapted for 3D Gaussian Splatting and local depths by running: 
 ```
 bash download_data.sh [TODO]
@@ -108,11 +108,13 @@ bash download_data.sh [TODO]
 Alternatively, you can manually adapt the RefNeRF dataset by following the instructions below.
 ### Adapt dataset manually (Alternative)
 #### Camera poses, point clouds, and images 
-The script .`data_making/refnerf_to_data.py` is included for converting the [RefNeRF](https://dorverbin.github.io/refnerf/) dataset, which contains data for shiny and reflective objects, to the format required by this repository. 
+The script `data_making/refnerf_to_data.py` is included for converting the [RefNeRF](https://dorverbin.github.io/refnerf/) dataset, which contains data for shiny and reflective objects, to the format required by this repository. 
 Please follow these steps:
-- Download the **Shiny Dataset** from the official [RefNeRF project page](https://dorverbin.github.io/refnerf/).
-- Place the downloaded folder (`refnerf`) in the `data/` folder.
-- Run `python data_making/refnerf_to_data.py` to convert the data in the required format. This script also runs COLMAP with the known camera poses included in the RefNeRF. The converted data is stored in `data/`, e.g. `data/toaster`, ready to be used by the `train.py` script. Please note: local depth information is not extracted. Please follow the next steps for it.
+- Download the **Shiny Blender Dataset** from the official [RefNeRF project page](https://dorverbin.github.io/refnerf/).
+- Place the downloaded folder (`refnerf`) under the `data/` folder.
+- Run `python data_making/refnerf_to_data.py` to convert the data in the required format. This script also runs COLMAP with the known camera poses included in the Shiny Blender dataset. The converted data is stored in `data/shiny-blender-3DGS`, e.g. `data/shiny-blender-3DGS/toaster`, ready to be used by the `train.py` script. 
+
+Please note: local depth information is not extracted. Please follow the next steps for it.
 
 #### Local depths
 - Make sure you have `blender` installed on your system, so that you can run it via your command line. 
@@ -123,8 +125,29 @@ bash data/extract_obj_from_blend.sh
 This script extracts `.obj` files from all the `.blend` files in `data/refnerf-blend` and places them in `data/refnerf-blend/obj`.
 
 ## Glossy Synthetic
+### Download data (**Recommended**)
+You can download the Glossy Synthetic dataset adapted for 3D Gaussian Splatting and local depths by running: 
+```
+bash download_data.sh [TODO]
+```
+Alternatively, you can manually adapt the Glossy Synthetic dataset by following the instructions below.
+### Adapt dataset manually (Alternative)
+#### Camera poses, point clouds, and images
+- Download the required data: `Glossy Synthetic` (training set),  `glossy-synthetic-nvs` (test set), and `meshes_pretrained`. 
+- Unzip them and place them under `data/`. 
+- Run `python data_making/nero_to_refnerf.py`: this generates an intermediate Blender dataset called `glossy-synthetic-Blender`. This dataset has a similar format to Ref-NeRF.
+- Run `python data_making/refnerf_to_data.py --dataset GlossySynthetic`: this generates the final dataset in the format required by this repository of Gaussian Splatting.
 
-Download Glossy Synthetic (training set) and GlossySyntheticNVS (test set).
+Please note: local depth information is not extracted. Please follow the next steps for it.
+
+#### Local depths
+- Make sure you have `blender` installed on your system, so that you can run it via your command line. 
+- If you haven't downloaded `meshes_pretrained`, please donwloaded, unzip it, and place it under data. 
+- From the root project simply run:
+```
+bash data/extract_obj_from_blend.sh
+```
+This script extracts `.obj` files from all the `.blend` files in `data/refnerf-blend` and places them in `data/refnerf-blend/obj`.
 
 ## Notes on license (original repo)
 The code in this repository (except in external.py) is licensed under the MIT licence.

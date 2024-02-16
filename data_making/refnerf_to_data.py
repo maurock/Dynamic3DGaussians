@@ -332,136 +332,145 @@ def extract_pointcloud_gt(output_obj_dir, dataset):
         
 
 def main(args):
-  input_dir = os.path.join('data/refnerf' if args.dataset == 'ShinyBlender' else 'data/glossy-synthetic-3DGS')
 
-  objects = os.listdir(input_dir)
+    if args.dataset == 'ShinyBlender':
+        input_dir = 'data/refnerf'
+        dataset_dir = 'shiny-blender-3DGS'
+
+    elif args.dataset == 'GlossySynthetic':
+        input_dir = 'data/glossy-synthetic-Blender'
+        dataset_dir = 'glossy-synthetic-3DGS'
+
+    else:
+        raise ValueError(f"Invalid dataset: {args.dataset}.")
   
-  for obj in objects:   # e.g. obj = "toaster"
+    objects = os.listdir(input_dir)
+
+    for obj in objects:   # e.g. obj = "toaster"
     
-    input_obj_dir = os.path.join(input_dir, obj)
+        input_obj_dir = os.path.join(input_dir, obj)
 
-    output_obj_dir = os.path.join(args.output_dir, obj)
+        output_obj_dir = os.path.join(args.output_dir, dataset_dir, obj)
 
-    # Read RefNeRF json files
-    json_path_train = os.path.join(input_obj_dir, "transforms_train.json")
-    json_path_test = os.path.join(input_obj_dir, "transforms_test.json")
-    with open(json_path_train, "r") as f:
-        json_train = json.load(f)
-    with open(json_path_test, "r") as f:
-        json_test = json.load(f)
+        # Read RefNeRF json files
+        json_path_train = os.path.join(input_obj_dir, "transforms_train.json")
+        json_path_test = os.path.join(input_obj_dir, "transforms_test.json")
+        with open(json_path_train, "r") as f:
+            json_train = json.load(f)
+        with open(json_path_test, "r") as f:
+            json_test = json.load(f)
 
-    regex_pattern = r'^r_\d+\.png$'   # e.g. r_*.png where * is a number
-    # Sort the list using the custom key function
-    sorted_ims_train = get_sorted_ims_path(
-        os.path.join(input_obj_dir, "train"), regex_pattern)
-    sorted_ims_test = get_sorted_ims_path(
-        os.path.join(input_obj_dir, "test"), regex_pattern)
-    sorted_ims = sorted_ims_train + sorted_ims_test
+        regex_pattern = r'^r_\d+\.png$'   # e.g. r_*.png where * is a number
+        # Sort the list using the custom key function
+        sorted_ims_train = get_sorted_ims_path(
+            os.path.join(input_obj_dir, "train"), regex_pattern)
+        sorted_ims_test = get_sorted_ims_path(
+            os.path.join(input_obj_dir, "test"), regex_pattern)
+        sorted_ims = sorted_ims_train + sorted_ims_test
 
-    # Initialise meta data ['w', 'h', 'k', 'w2c', 'fn', 'cam_id']
-    meta_train = {'w': 800, 'h': 800, 'k': None, 'w2c': [], 'fn': [], 'cam_id': []}
-    meta_test = {'w': 800, 'h': 800, 'k': None, 'w2c': [], 'fn': [], 'cam_id': []}
+        # Initialise meta data ['w', 'h', 'k', 'w2c', 'fn', 'cam_id']
+        meta_train = {'w': 800, 'h': 800, 'k': None, 'w2c': [], 'fn': [], 'cam_id': []}
+        meta_test = {'w': 800, 'h': 800, 'k': None, 'w2c': [], 'fn': [], 'cam_id': []}
 
-    k = create_intrinsics_matrix(
-        meta_train['w'],
-        meta_train['h'],
-        json_train['camera_angle_x']
-    )
-  
-    for i in range(0, len(sorted_ims)):
-        # Create image directory 
-        cam_image_dir = os.path.join(output_obj_dir, "ims", str(i))
-        depth_image_dir = os.path.join(output_obj_dir, "depth", str(i))
-        seg_image_dir = os.path.join(output_obj_dir, "seg", str(i))
-        helpers.create_dirs([cam_image_dir, depth_image_dir, seg_image_dir])
+        k = create_intrinsics_matrix(
+            meta_train['w'],
+            meta_train['h'],
+            json_train['camera_angle_x']
+        )
+    
+        for i in range(0, len(sorted_ims)):
+            # Create image directory 
+            cam_image_dir = os.path.join(output_obj_dir, "ims", str(i))
+            depth_image_dir = os.path.join(output_obj_dir, "depth", str(i))
+            seg_image_dir = os.path.join(output_obj_dir, "seg", str(i))
+            helpers.create_dirs([cam_image_dir, depth_image_dir, seg_image_dir])
 
-        # Convert image PNG to JPEG and save it
-        im = Image.open(sorted_ims[i])
-        im.save(os.path.join(cam_image_dir, "render.png"))
+            # Convert image PNG to JPEG and save it
+            im = Image.open(sorted_ims[i])
+            im.save(os.path.join(cam_image_dir, "render.png"))
 
-        # Copy depth images
-        if args.dataset == 'ShinyBlender':
-            depth_path = sorted_ims[i].replace(".png", "_disp.tiff")
-        elif args.dataset == 'GlossySynthetic':
-            depth_path = sorted_ims[i].replace(".png", "_depth.tiff")
-        else:
-            raise ValueError(f"Invalid dataset: {args.dataset}.")
-        if os.path.exists(depth_path):
-            shutil.copy(depth_path, os.path.join(depth_image_dir, "depth.tiff"))
+            # Copy depth images
+            if args.dataset == 'ShinyBlender':
+                depth_path = sorted_ims[i].replace(".png", "_disp.tiff")
+            elif args.dataset == 'GlossySynthetic':
+                depth_path = sorted_ims[i].replace(".png", "_depth.tiff")
+            else:
+                raise ValueError(f"Invalid dataset: {args.dataset}.")
+            if os.path.exists(depth_path):
+                shutil.copy(depth_path, os.path.join(depth_image_dir, "depth.tiff"))
 
-        # Generate black images as everything is static currently. Images have the same size as the original images
-        # Segmentation imaged need to be .PNG
-        utils_data.generate_seg_images(
-            output_obj_dir,
-            cam_image_dir,
-            str(i),
-            img_name='render.png'
+            # Generate black images as everything is static currently. Images have the same size as the original images
+            # Segmentation imaged need to be .PNG
+            utils_data.generate_seg_images(
+                output_obj_dir,
+                cam_image_dir,
+                str(i),
+                img_name='render.png'
+            )
+
+            # Create metadata file
+            meta_results = meta_train if i < len(sorted_ims_train) else meta_test
+            json_file = json_train if i < len(sorted_ims_train) else json_test
+            j = i if i < len(sorted_ims_train) else i - len(sorted_ims_train)
+
+            c2w = np.array(json_file['frames'][j]['transform_matrix'])
+            c2w = align_c2w(c2w)  # Align c2w to the convention used by this codebase
+            w2c = np.linalg.inv(c2w)
+            meta_results['w2c'].append(w2c)
+            meta_results['fn'].append(os.path.join(os.path.basename(cam_image_dir), "render.png"))
+            meta_results['cam_id'].append(os.path.basename(cam_image_dir))
+
+        # Postprocess metadata
+        meta_train = process_metadata(meta_train, sorted_ims_train, k)
+        meta_test = process_metadata(meta_test, sorted_ims_test, k)
+
+        # Save metadata
+        meta_path_train = os.path.join(output_obj_dir, "train_meta.json")
+        meta_path_test = os.path.join(output_obj_dir, "test_meta.json")
+        with open(meta_path_train, 'w') as f:
+            json.dump(meta_train, f)
+        with open(meta_path_test, 'w') as f:
+            json.dump(meta_test, f)
+
+        # Create temporary colmap directories
+        sparse_init_dir, sparse_bin_dir = create_temporary_dirs_files(output_obj_dir, meta_train, meta_test, sorted_ims_train, k)
+        
+        # Create database
+        database_path = create_database(output_obj_dir)
+        
+        # Populate database with known camera poses
+        populate_database(
+            f'{database_path}',
+            meta_train,
+            meta_test,
+            k
         )
 
-        # Create metadata file
-        meta_results = meta_train if i < len(sorted_ims_train) else meta_test
-        json_file = json_train if i < len(sorted_ims_train) else json_test
-        j = i if i < len(sorted_ims_train) else i - len(sorted_ims_train)
+        # Run COLMAP's feature extractor
+        feature_extractor(database_path, output_obj_dir)
 
-        c2w = np.array(json_file['frames'][j]['transform_matrix'])
-        c2w = align_c2w(c2w)  # Align c2w to the convention used by this codebase
-        w2c = np.linalg.inv(c2w)
-        meta_results['w2c'].append(w2c)
-        meta_results['fn'].append(os.path.join(os.path.basename(cam_image_dir), "render.png"))
-        meta_results['cam_id'].append(os.path.basename(cam_image_dir))
+        # Run COLMAP's exhaustive matcher
+        exhaustive_matcher(database_path)
 
-    # Postprocess metadata
-    meta_train = process_metadata(meta_train, sorted_ims_train, k)
-    meta_test = process_metadata(meta_test, sorted_ims_test, k)
+        # Run COLMAP's point triangulator using the known poses
+        point_triangulator(output_obj_dir, database_path, sparse_init_dir, sparse_bin_dir)
+        
+        # Convert points3D.bin to .txt
+        convert_bin_to_txt(output_obj_dir)
 
-    # Save metadata
-    meta_path_train = os.path.join(output_obj_dir, "train_meta.json")
-    meta_path_test = os.path.join(output_obj_dir, "test_meta.json")
-    with open(meta_path_train, 'w') as f:
-        json.dump(meta_train, f)
-    with open(meta_path_test, 'w') as f:
-        json.dump(meta_test, f)
+        # Convert points3D.txt to .npz
+        init_pt_cld = extract_xyzrgb_from_txt(os.path.join(output_obj_dir, "sparse", "points3D.txt"))
+        np.savez(os.path.join(output_obj_dir, "init_pt_cld.npz"), data=init_pt_cld)
 
-    # Create temporary colmap directories
-    sparse_init_dir, sparse_bin_dir = create_temporary_dirs_files(output_obj_dir, meta_train, meta_test, sorted_ims_train, k)
-    
-    # Create database
-    database_path = create_database(output_obj_dir)
-    
-    # Populate database with known camera poses
-    populate_database(
-        f'{database_path}',
-        meta_train,
-        meta_test,
-        k
-    )
+        # Extract ground truth point cloud
+        if args.dataset == 'ShinyBlender':
+            output_seq_dir = os.path.join(os.path.dirname(data.__file__), obj)
+            extract_pointcloud_gt(output_seq_dir, dataset=args.dataset)
+        elif args.dataset == 'GlossySynthetic':
+            shutil.copy(os.path.join(input_obj_dir, 'gt_pt_cld.npz'), os.path.join(output_obj_dir, "gt_pt_cld.npz"))
 
-    # Run COLMAP's feature extractor
-    feature_extractor(database_path, output_obj_dir)
-
-    # Run COLMAP's exhaustive matcher
-    exhaustive_matcher(database_path)
-
-    # Run COLMAP's point triangulator using the known poses
-    point_triangulator(output_obj_dir, database_path, sparse_init_dir, sparse_bin_dir)
-    
-    # Convert points3D.bin to .txt
-    convert_bin_to_txt(output_obj_dir)
-
-    # Convert points3D.txt to .npz
-    init_pt_cld = extract_xyzrgb_from_txt(os.path.join(output_obj_dir, "sparse", "points3D.txt"))
-    np.savez(os.path.join(output_obj_dir, "init_pt_cld.npz"), data=init_pt_cld)
-
-    # Remove unnecessary files and directories
-    remove_temporary_files(sparse_init_dir, sparse_bin_dir)
-
-    # Extract ground truth point cloud
-    if args.dataset == 'ShinyBlender':
-        output_seq_dir = os.path.join(os.path.dirname(data.__file__), obj)
-        extract_pointcloud_gt(output_seq_dir, dataset=args.dataset)
-    elif args.dataset == 'GlossySynthetic':
-        shutil.copy(os.path.join(input_obj_dir, "gt_pt_cld.npz"), os.path.join(output_obj_dir, "gt_pt_cld.npz"))
-
+        # Remove unnecessary files and directories
+        remove_temporary_files(sparse_init_dir, sparse_bin_dir)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
