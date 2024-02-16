@@ -248,12 +248,10 @@ def get_loss(
 
     rendervar = params2rendervar(params)
     rendervar['means2D'].retain_grad()
-
     
     im, radius, depth, alpha = Renderer(raster_settings=curr_data['cam'],train=True)(**rendervar)
 
     curr_id = curr_data['id']
-    im = torch.exp(params['cam_m'][curr_id])[:, None, None] * im + params['cam_c'][curr_id][:, None, None]
     losses['im'] = 0.8 * l1_loss_v1(im, curr_data['im']) + 0.2 * (1.0 - calc_ssim(im, curr_data['im']))
     variables['means2D'] = rendervar['means2D']  # Gradient only accum from colour render for densification
 
@@ -393,7 +391,6 @@ def report_progress(params, data, i, progress_bar, variables, every_i=100):
     if i % every_i == 0:
         im, _, _, _ = Renderer(raster_settings=data['cam'],train=True)(**params2rendervar(params))
         curr_id = data['id']
-        im = torch.exp(params['cam_m'][curr_id])[:, None, None] * im + params['cam_c'][curr_id][:, None, None]
         psnr = calc_psnr(im, data['im']).mean()
         
         progress_bar.set_postfix({"train img 0 PSNR": f"{psnr:.{7}f}",
@@ -528,7 +525,6 @@ def main(configs):#seq, exp, output_seq, args):
                 optimizer.zero_grad(set_to_none=True)
 
                 # TEMPORARY EVALUATION ##############################################################################
-
                 if (i+1) % 1000 == 0 and configs['eval_intermediate']: 
                     intermediate_params = [params2cpu(params, is_initial_timestep)]
                     save_config(configs)

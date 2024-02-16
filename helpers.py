@@ -180,17 +180,14 @@ def load_disparity_image(path):
     because we are decoding the raw bytes of the image, we need to convert the bytes to a numpy array
     and normalise it by dividing by 2^16."""
 
-    with open(path, 'rb') as f:
-        bytes_ = np.asarray(bytearray(f.read()), dtype=np.uint8)
-
-    disp = np.array(cv2.imdecode(bytes_, cv2.IMREAD_UNCHANGED), dtype=np.float32)
+    disp = decode_image_to_tensor(path)
     disp = disp / 2**16
     disp_filtered = disp[:, : , 0] # only use the first channel
 
     return torch.tensor(disp_filtered).float().cuda()
 
 
-def load_exr_image(path):
+def decode_image_to_tensor(path):
     """Load EXR image from path and convert to torch tensor of shape (C, H, W)"""
     with open(path, 'rb') as f:
         bytes_ = np.asarray(bytearray(f.read()), dtype=np.uint8)

@@ -2,10 +2,10 @@
 # Default settings. Please do not touch this file, which is used to reproduce run_experiments.py
 # To change the configuration of a standard training, please use the train.yaml file. 
 ##################################################################
-dataset: ''
+dataset: ''    # Choose between ShinyBlender or GlossySynthetic 
 input_seq: ''  # Path to the directory inside data/, e.g. toaster
 output_seq: '' # Path to the directory inside output/<exp>, e.g. toaster_15000
-exp_name: ''  # Path to the experiment directory inside output/, e.g. exp1
+exp_name: ''   # Path to the experiment directory inside output/, e.g. exp1
 num_touches: 1   # Number of touches to simulate
 iterations: 1  # Number of iterations for the training process
 iterations_densify: 1  # Number of iterations for the densification process

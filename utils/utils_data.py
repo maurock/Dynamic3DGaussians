@@ -76,7 +76,7 @@ def load_meta_file(data_dir, flag):
     return meta
 
 
-def load_rgb_gt(data_dir, partition='test'):
+def load_rgb_gt(data_dir, partition):
     """Load the ground truth RGB images from a specified directory.
     Parameters:
         data_dir (str): Absolute path to the object data directory, e.g. <path_to_data>/toaster
@@ -92,7 +92,7 @@ def load_rgb_gt(data_dir, partition='test'):
     return rgb_images
 
 
-def load_depth_gt(data_dir, partition='test'):
+def load_depth_gt(data_dir, partition, is_disparity):
     """Load the disparity images from a selected directory and convert them to depth images.
     Parameters:
         data_dir (str): Absolute path to the object data directory, e.g. <path_to_data>/toaster
@@ -103,14 +103,19 @@ def load_depth_gt(data_dir, partition='test'):
     meta = load_meta_file(data_dir, partition)
 
     # Get the paths to the disparity images
-    disp_paths = [os.path.join(data_dir, 'depth', x.split(os.sep)[0], 'depth.tiff') for x in meta['fn'][0]]
+    paths = [os.path.join(data_dir, 'depth', x.split(os.sep)[0], 'depth.tiff') for x in meta['fn'][0]]
         
     # self._debug_depth(depth_paths)
-    # Load disparity images. Check helpers.load_disparity_image() for more info about the conversion.
-    depth_images = torch.stack([helpers.load_disparity_image(x) for x in disp_paths], dim=0)
+    if is_disparity:
+        # Load disparity images. Check helpers.load_disparity_image() for more info about the conversion.
+        disp_images = torch.stack([helpers.load_disparity_image(x) for x in paths], dim=0)
 
-    # Convert disparity to depth
-    depth_images = helpers.convert_disparity_to_depth(depth_images)
+        # Convert disparity to depth
+        depth_images = helpers.convert_disparity_to_depth(disp_images)
+    else:
+        # Load depth images
+        depth_images = torch.stack([helpers.decode_image_to_tensor(x) for x in paths], dim=0)
+
     return depth_images
 
 
@@ -123,7 +128,7 @@ def load_pointcloud_gt(data_dir):
     """
     # Load the ground truth pointcloud
     pointcloud = np.load(os.path.join(data_dir, 'gt_pt_cld.npz'))['pts']
-    pointcloud = torch.tensor(pointcloud).cuda()
+    pointcloud = torch.tensor(pointcloud).float().cuda()
     return pointcloud
 
 

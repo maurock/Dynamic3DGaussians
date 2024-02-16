@@ -149,7 +149,7 @@ def create_images_txt(meta, j):
     for i, w2c in enumerate(meta['w2c'][0]):
         quaternion, translation = w2c_to_pose(w2c)
         # Format for COLMAP (ID, quaternion, translation, camera ID, image name)
-        images_content += f"{i+1+j} {quaternion[3]} {quaternion[0]} {quaternion[1]} {quaternion[2]} {translation[0]} {translation[1]} {translation[2]} 1 {i+j}/render.jpg\n\n"
+        images_content += f"{i+1+j} {quaternion[3]} {quaternion[0]} {quaternion[1]} {quaternion[2]} {translation[0]} {translation[1]} {translation[2]} 1 {i+j}/render.png\n\n"
     return images_content
 
 
@@ -261,7 +261,7 @@ def point_triangulator(output_obj_dir, database_path, sparse_init_dir, sparse_bi
         print("Point triangulator finished.")
 
 
-def extract_pointcloud_gt(output_obj_dir):
+def extract_pointcloud_gt(output_obj_dir, dataset):
     """Extract the ground truth point cloud from the disparity images in the training set.
     Then, save the point cloud in a .npz file.
     The reason why the point cloud is not extracted directly from the object mesh is that internal
@@ -272,12 +272,18 @@ def extract_pointcloud_gt(output_obj_dir):
     Returns:
 
     """
+    if dataset == 'ShinyBlender':
+        is_disparity = True
+    elif dataset == 'GlossySynthetic':
+        is_disparity = False
+    else:
+        raise ValueError('Invalid dataset name')
     # Set paths
     pc_cld_path = os.path.join(output_obj_dir, 'gt_pt_cld.npz')
 
     # Load files
     meta_train = utils_data.load_meta_file(output_obj_dir, 'train')
-    depth_images = utils_data.load_depth_gt(output_obj_dir, 'train')
+    depth_images = utils_data.load_depth_gt(output_obj_dir, 'train', is_disparity)
 
     # Defines variables
     w, h = meta_train['w'], meta_train['h']
@@ -326,11 +332,13 @@ def extract_pointcloud_gt(output_obj_dir):
         
 
 def main(args):
-  objects = os.listdir(args.input_dir)
+  input_dir = os.path.join('data/refnerf' if args.dataset == 'ShinyBlender' else 'data/glossy-synthetic-3DGS')
+
+  objects = os.listdir(input_dir)
   
   for obj in objects:   # e.g. obj = "toaster"
     
-    input_obj_dir = os.path.join(args.input_dir, obj)
+    input_obj_dir = os.path.join(input_dir, obj)
 
     output_obj_dir = os.path.join(args.output_dir, obj)
 
@@ -369,12 +377,15 @@ def main(args):
 
         # Convert image PNG to JPEG and save it
         im = Image.open(sorted_ims[i])
-        if im.mode == 'RGBA':
-            im = im.convert('RGB')
-        im.save(os.path.join(cam_image_dir, "render.jpg"))
+        im.save(os.path.join(cam_image_dir, "render.png"))
 
         # Copy depth images
-        depth_path = sorted_ims[i].replace(".png", "_disp.tiff")
+        if args.dataset == 'ShinyBlender':
+            depth_path = sorted_ims[i].replace(".png", "_disp.tiff")
+        elif args.dataset == 'GlossySynthetic':
+            depth_path = sorted_ims[i].replace(".png", "_depth.tiff")
+        else:
+            raise ValueError(f"Invalid dataset: {args.dataset}.")
         if os.path.exists(depth_path):
             shutil.copy(depth_path, os.path.join(depth_image_dir, "depth.tiff"))
 
@@ -384,7 +395,7 @@ def main(args):
             output_obj_dir,
             cam_image_dir,
             str(i),
-            img_name='render.jpg'
+            img_name='render.png'
         )
 
         # Create metadata file
@@ -396,7 +407,7 @@ def main(args):
         c2w = align_c2w(c2w)  # Align c2w to the convention used by this codebase
         w2c = np.linalg.inv(c2w)
         meta_results['w2c'].append(w2c)
-        meta_results['fn'].append(os.path.join(os.path.basename(cam_image_dir), "render.jpg"))
+        meta_results['fn'].append(os.path.join(os.path.basename(cam_image_dir), "render.png"))
         meta_results['cam_id'].append(os.path.basename(cam_image_dir))
 
     # Postprocess metadata
@@ -445,13 +456,16 @@ def main(args):
     remove_temporary_files(sparse_init_dir, sparse_bin_dir)
 
     # Extract ground truth point cloud
-    output_seq_dir = os.path.join(os.path.dirname(data.__file__), obj)
-    extract_pointcloud_gt(output_seq_dir)
+    if args.dataset == 'ShinyBlender':
+        output_seq_dir = os.path.join(os.path.dirname(data.__file__), obj)
+        extract_pointcloud_gt(output_seq_dir, dataset=args.dataset)
+    elif args.dataset == 'GlossySynthetic':
+        shutil.copy(os.path.join(input_obj_dir, "gt_pt_cld.npz"), os.path.join(output_obj_dir, "gt_pt_cld.npz"))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input_dir", type=str, default="data/refnerf", help="Path to the RefNeRF dataset.")
+    parser.add_argument("--dataset", type=str, default='', help="Choose between 'ShinyBlender' or 'GlossySynthetic'")
     parser.add_argument("--output_dir", type=str, default="data/", help="Path to the output directory.")
-    args = parser.parse_args()
+    args = parser.parse_args()    
     main(args) 

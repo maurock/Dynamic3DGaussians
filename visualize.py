@@ -46,7 +46,7 @@ traj_length = 15
 def_pix = torch.tensor(
     np.stack(np.meshgrid(np.arange(w) + 0.5, np.arange(h) + 0.5, 1), -1).reshape(-1, 3)).cuda().float()
 pix_ones = torch.ones(h * w, 1).cuda().float()
-colormappa = cm.magma #cm.BuPu_r  # You can change this to cm.jet, cm.viridis, etc.
+colormappa = cm.magma #cm.magma #cm.BuPu_r  # You can change this to cm.jet, cm.viridis, etc.
 
 
 def init_camera(y_angle=0., center_dist=10.0, cam_height=1.3, f_ratio=0.82):
@@ -132,7 +132,7 @@ def calculate_rot_vec(scene_data, is_fg):
 
 def rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None):
     d_near = 0.9
-    d_far = 5
+    d_far = 6
     invk = torch.inverse(torch.tensor(k).cuda().float())
     c2w = torch.inverse(torch.tensor(w2c).cuda().float())
     radial_depth = depth[0].reshape(-1)
@@ -322,19 +322,19 @@ def visualize(input_seq, exp, output_seq):
             # im, depth = helpers.render(w, h, k, w2c, near, far, scene_data[0])
             pts, cols = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
 
-            # if mode[0] == 'depth':
+            if mode[0] == 'depth':
 
-            #     # Reshape the depth map to 2D for applying the colormap
-            #     cols_array = np.asarray(cols, dtype=np.float32)[:,0].reshape(h, w)
-            #     cols_array = np.clip(cols_array, 0, 1)
+                # Reshape the depth map to 2D for applying the colormap
+                cols_array = np.asarray(cols, dtype=np.float32)[:,0].reshape(h, w)
+                cols_array = np.clip(cols_array, 0, 1)
 
-            #     # Apply a colormap (let's use 'plasma' for this example)
-            #     colored_depth_map_2d = colormappa(cols_array)
+                # Apply a colormap (let's use 'plasma' for this example)
+                colored_depth_map_2d = colormappa(cols_array)
 
-            #     # Now, discard the alpha channel and reshape back to original shape
-            #     colored_depth_map_1d = colored_depth_map_2d[..., :3].reshape(-1, 3)
+                # Now, discard the alpha channel and reshape back to original shape
+                colored_depth_map_1d = colored_depth_map_2d[..., :3].reshape(-1, 3)
 
-            #     cols = o3d.utility.Vector3dVector(colored_depth_map_1d)
+                cols = o3d.utility.Vector3dVector(colored_depth_map_1d)
             
         pcd.points = pts
         pcd.colors = cols
@@ -362,10 +362,10 @@ def visualize(input_seq, exp, output_seq):
 
 if __name__ == "__main__":
     # Input
-    input_seq = 'toaster'
+    input_seq = 'cat'
     # Output
-    exp_name = "toaster_shs"
-    output_seq = "toaster_try1"
+    exp_name = "cat_try"
+    output_seq = "cat_1"
     # Visualise
     for sequence in [output_seq]: #, "boxes", "football", "juggle", "softball", "tennis"]:
         visualize(input_seq, exp_name, sequence)

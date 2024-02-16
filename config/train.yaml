@@ -1,17 +1,17 @@
 # Settings
-dataset: 'RefNeRF'
-input_seq: 'toaster'  # Path to the directory inside data/, e.g. toaster
-output_seq: 'toaster_temp7' # Path to the directory inside output/<exp>, e.g. toaster_15000
-exp_name: 'toaster_try'  # Path to the experiment directory inside output/, e.g. exp1
+dataset: 'GlossySynthetic' # Choose between ShinyBlender or GlossySynthetic 
+input_seq: 'cat'  # Path to the directory inside data/, e.g. toaster
+output_seq: 'cat_1' # Path to the directory inside output/<exp>, e.g. toaster_15000
+exp_name: 'cat_try'  # Path to the experiment directory inside output/, e.g. exp1
 num_touches: 1   # Number of touches to simulate
-iterations: 30000  # Number of iterations for the training process
-iterations_densify: 20000  # Number of iterations for the densification process
+iterations: 20000  # Number of iterations for the training process
+iterations_densify: 15000  # Number of iterations for the densification process
 ratio_data: 1  # Ratio of the data to use for training
 random_selection: False # Randomly select the touches (True/False)
 
 # Saving
 save_eval_data: False  # Save evaluation data (True/False)
-eval: True
+eval: False
 
 # TEMP ###################################3
 lr_shs: 0.00025  # Learning rate for the SHS

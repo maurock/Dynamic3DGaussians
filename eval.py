@@ -118,7 +118,7 @@ class Evaluator:
     def evaluate_rgb(self, rgb_pred_npy):
         with torch.no_grad():
             # Load ground truth and predicted RGB images
-            rgb_gt = utils_data.load_rgb_gt(self.data_dir)
+            rgb_gt = utils_data.load_rgb_gt(self.data_dir, 'test')
             rgb_pred = torch.tensor(rgb_pred_npy).float().cuda()
 
             # Prepare for PSNR and SSIM
@@ -155,8 +155,14 @@ class Evaluator:
     
     def evaluate_depth(self, depth_pred_npy):
         with torch.no_grad():
+            if self.args.dataset == 'ShinyBlender':
+                is_disparity = True
+            elif self.args.dataset == 'GlossySynthetic':
+                is_disparity = False
+            else:
+                raise ValueError('Invalid dataset name')
             # Load ground truth and predicted depth images
-            depth_gt = utils_data.load_depth_gt(self.data_dir)
+            depth_gt = utils_data.load_depth_gt(self.data_dir, 'test', is_disparity)
             depth_pred = torch.tensor(depth_pred_npy).float().cuda()
             
             # Normalise depth
@@ -192,7 +198,7 @@ class Evaluator:
         cd = self.evaluate_3D(pc_pred_npy)
 
         # Compute depth metrics
-        ssim_depth, psnr_depth = self.evaluate_depth(depth_pred_npy)
+        # sim_depth, psnr_depth = self.evaluate_depth(depth_pred_npy)
 
         # Save metrics as json file
         metrics = {
@@ -200,8 +206,8 @@ class Evaluator:
             'psnr_rgb': psnr_rgb,
             'cd': cd,
             #'emd': emd,
-            'ssim_depth': ssim_depth,
-            'psnr_depth': psnr_depth
+            #'ssim_depth': ssim_depth,
+            #'psnr_depth': psnr_depth
         }
         with open(os.path.join(self.experiment_dir, "eval", "metrics.json"), 'w') as file:
             json.dump(metrics, file, indent=4)
@@ -218,14 +224,11 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type=str, default="RefNeRF", help="Dataset name. Choose between 'RefNeRF'")
+    parser.add_argument("--dataset", type=str, default="ShinyBlender", help="Dataset name. Choose between 'ShinyBlender', 'GlossySynthetic'")
     parser.add_argument("--exp_name", type=str, default="", help="Path to the experiment directory inside output/, e.g. exp1")
     parser.add_argument("--output_seq", type=str, default="", help="Path to the run directory inside output/<exp>, e.g. toaster")
     parser.add_argument("--save_eval_data", action="store_true", default=False, help="Save evaluation data")
 
     args = parser.parse_args()
-
-    args.exp_name = 'ablation4_toaster'
-    args.output_seq = 'toaster_ratio01_2'
 
     main(args)
