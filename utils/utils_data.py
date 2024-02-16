@@ -28,13 +28,22 @@ def generate_seg_images(output_root_dir, rgb_folder, num_cam, img_name):
     black_image.save(os.path.join(target_seg_folder,'render.png'))
 
 
-def get_refnerf_blend_obj_paths():
+def get_obj_paths(dataset):
     """Get all obj paths"""
-    objs_dir = os.path.join(
-        os.path.dirname(data.__file__),
-        "refnerf-blend",
-        'obj'
-    )
+
+    if dataset == 'ShinyBlender':
+        objs_dir = os.path.join(
+            os.path.dirname(data.__file__),
+            'refnerf-blend',
+            'obj'
+        )
+    elif dataset == 'GlossySynthetic':
+        objs_dir = os.path.join(
+            os.path.dirname(data.__file__),
+            'meshes-pretrained',
+            'obj'
+        )
+    
     return glob(os.path.join(objs_dir, "*.obj"))
 
 

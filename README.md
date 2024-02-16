@@ -124,6 +124,11 @@ bash data/extract_obj_from_blend.sh
 ```
 This script extracts `.obj` files from all the `.blend` files in `data/refnerf-blend` and places them in `data/refnerf-blend/obj`.
 
+- Finally, to extract simulated local depths, simply run:
+```
+python data_making/simulate_local_depth.py --dataset ShinyBlender
+```
+
 ## Glossy Synthetic
 ### Download data (**Recommended**)
 You can download the Glossy Synthetic dataset adapted for 3D Gaussian Splatting and local depths by running: 
@@ -133,7 +138,7 @@ bash download_data.sh [TODO]
 Alternatively, you can manually adapt the Glossy Synthetic dataset by following the instructions below.
 ### Adapt dataset manually (Alternative)
 #### Camera poses, point clouds, and images
-- Download the required data: `Glossy Synthetic` (training set),  `glossy-synthetic-nvs` (test set), and `meshes_pretrained`. 
+- Download the required data: `Glossy Synthetic` (training set),  `glossy-synthetic-nvs` (test set), and `meshes-pretrained`. 
 - Unzip them and place them under `data/`. 
 - Run `python data_making/nero_to_refnerf.py`: this generates an intermediate Blender dataset called `glossy-synthetic-Blender`. This dataset has a similar format to Ref-NeRF.
 - Run `python data_making/refnerf_to_data.py --dataset GlossySynthetic`: this generates the final dataset in the format required by this repository of Gaussian Splatting.
@@ -141,13 +146,25 @@ Alternatively, you can manually adapt the Glossy Synthetic dataset by following 
 Please note: local depth information is not extracted. Please follow the next steps for it.
 
 #### Local depths
-- Make sure you have `blender` installed on your system, so that you can run it via your command line. 
-- If you haven't downloaded `meshes_pretrained`, please donwloaded, unzip it, and place it under data. 
+- If you haven't downloaded `meshes-pretrained`, please donwload it, unzip it, and place it under `data/`. The structure should be:
+```
+data
+ ├── meshes-pretrained
+ │   ├── syn
+ │   │   ├── cat.ply
+ │   │   ├── ...
+ │   ├── real  # <-- not necessary
+```
 - From the root project simply run:
 ```
-bash data/extract_obj_from_blend.sh
+python data_making/convert_ply_to_obj.py
 ```
-This script extracts `.obj` files from all the `.blend` files in `data/refnerf-blend` and places them in `data/refnerf-blend/obj`.
+This script converts the `.ply` files stored in `data/meshes-pretrained/syn` to `.obj` files needed to extract simulated local depths. These `.obj` files are stored in `data/meshes-pretrained/obj`.
+
+- Finally, to extract simulated local depths, simply run:
+```
+python data_making/simulate_local_depth.py --dataset ShinyBlender
+```
 
 ## Notes on license (original repo)
 The code in this repository (except in external.py) is licensed under the MIT licence.

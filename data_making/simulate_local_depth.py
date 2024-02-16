@@ -106,7 +106,14 @@ def debug_plot(points, intersections, depth_points=None):
 
 def main(args):
     # List all objects paths
-    obj_paths = utils_data.get_refnerf_blend_obj_paths()
+    obj_paths = utils_data.get_obj_paths(args.dataset)
+
+    if args.dataset == 'ShinyBlender':
+        dataset_dir = 'shiny-blender-3DGS'
+    elif args.dataset == 'GlossySynthetic':
+        dataset_dir = 'glossy-synthetic-3DGS'
+    else:
+        raise ValueError(f"Invalid dataset: {args.dataset}. Choose between 'ShinyBlender' and 'GlossySynthetic'.")
 
     for obj in obj_paths:
         # List of depth points
@@ -146,12 +153,15 @@ def main(args):
         obj_name = os.path.basename(obj).replace('.obj', '')
         if obj_name == 'musclecar':    # Fix mismatch between refnerf and refnerf-blend
             obj_name = 'car'
-        output_path = os.path.join(os.path.dirname(data.__file__), obj_name, f'depth_pt_cld.npz')
+        output_path = os.path.join(
+            os.path.dirname(data.__file__), dataset_dir, obj_name, f'depth_pt_cld.npz'
+        )
         np.savez_compressed(output_path, depth_points=depths_list)
    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument('--dataset', type=str, default='', help="Dataset name: choose between 'ShinyBlender' or 'GlossySynthetic'")
     parser.add_argument('--max_num_touches', type=int, default=100)
     parser.add_argument('--num_points_per_intersection', type=int, default=50)
     args = parser.parse_args()
