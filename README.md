@@ -97,11 +97,11 @@ python blender_to_data.py --data_path Blender/PROJECT_FOLDER/ --output_path data
 ## Extract data using COLMAP
 Coming soon.
 
-## RefNeRF
-The RefNeRF dataset provided in the official implementation needs to be adapted to be processed by this repository. You can either download the adapted dataset or manually adapt it yourself by following the following instructions.
+## Shiny Blender
+The Shiny Blender dataset provided in the [official implementation]9(https://dorverbin.github.io/refnerf/) needs to be adapted to be processed by this repository. You can either download the adapted dataset or manually adapt it yourself by following the following instructions. We recommend downloading the data we provide as the depth images provided in the official repository are quantised.
 
 ### Download data (Recommended)
-You can download the RefNeRF dataset adapted for 3D Gaussian Splatting and local depths by running: 
+You can download the Shiny Blender dataset adapted for 3D Gaussian Splatting and local depths by running: 
 ```
 bash download_data.sh [TODO]
 ```
@@ -122,6 +122,9 @@ bash data/extract_obj_from_blend.sh
 ```
 This script extracts `.obj` files from all the `.blend` files in `data/refnerf-blend` and places them in `data/refnerf-blend/obj`.
 
+## Glossy Synthetic
+
+Download Glossy Synthetic (training set) and GlossySyntheticNVS (test set).
 
 ## Notes on license (original repo)
 The code in this repository (except in external.py) is licensed under the MIT licence.

@@ -190,6 +190,16 @@ def load_disparity_image(path):
     return torch.tensor(disp_filtered).float().cuda()
 
 
+def load_exr_image(path):
+    """Load EXR image from path and convert to torch tensor of shape (C, H, W)"""
+    with open(path, 'rb') as f:
+        bytes_ = np.asarray(bytearray(f.read()), dtype=np.uint8)
+
+    img = np.array(cv2.imdecode(bytes_, cv2.IMREAD_UNCHANGED), dtype=np.float32)
+
+    return torch.tensor(img).float().cuda()
+
+
 def convert_disparity_to_depth(disparity_img):
     """Convert disparity to depth: 
     disparity = 1 / (1 + depth), so depth = 1 / disp - 1"""

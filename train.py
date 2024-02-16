@@ -138,7 +138,7 @@ def get_dataset(t, md, configs):
         w, h, k, w2c = md['w'], md['h'], md['k'][t][c], md['w2c'][t][c]
         cam = setup_camera(w, h, k, w2c, near=0.01, far=100.0)
         fn = md['fn'][t][c]
-        im = np.array(copy.deepcopy(Image.open(f"{os.path.dirname(data.__file__)}/{seq}/ims/{fn}")))
+        im = np.array(copy.deepcopy(Image.open(f"{os.path.dirname(data.__file__)}/{seq}/ims/{fn}")))[..., :3]
         im = torch.tensor(im).float().cuda().permute(2, 0, 1) / 255
         seg = np.array(copy.deepcopy(Image.open(f"{os.path.dirname(data.__file__)}/{seq}/seg/{fn.replace('.jpg', '.png')}"))).astype(np.float32)
         seg = torch.tensor(seg).float().cuda()
@@ -528,7 +528,8 @@ def main(configs):#seq, exp, output_seq, args):
                 optimizer.zero_grad(set_to_none=True)
 
                 # TEMPORARY EVALUATION ##############################################################################
-                if (i+1) % 5000 == 0: 
+
+                if (i+1) % 1000 == 0 and configs['eval_intermediate']: 
                     intermediate_params = [params2cpu(params, is_initial_timestep)]
                     save_config(configs)
                     save_params(intermediate_params, configs['output_seq'], configs['exp_name'])

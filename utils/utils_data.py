@@ -88,7 +88,7 @@ def load_rgb_gt(data_dir, partition='test'):
     rgb_paths = [os.path.join(data_dir, 'ims', x) for x in meta['fn'][0]]
 
     # Convert image path to torch tensor
-    rgb_images = torch.stack([helpers.load_rgb_image(x).permute(1, 2, 0) for x in rgb_paths],dim=0)
+    rgb_images = torch.stack([helpers.load_rgb_image(x).permute(1, 2, 0) for x in rgb_paths],dim=0)[...,:3]
     return rgb_images
 
 

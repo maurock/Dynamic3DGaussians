@@ -12,8 +12,10 @@ iterations_densify: 1  # Number of iterations for the densification process
 ratio_data: 1  # Ratio of the data to use for training
 random_selection: False # Randomly select the touches (True/False)
 
-# TEMP
+# TEMP ###################################
 lr_shs: 0.00025  # Learning rate for the SHS
+eval_intermediate: False
+###########################################
 
 # Saving
 save_eval_data: True  # Save evaluation data (True/False)
