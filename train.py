@@ -23,7 +23,7 @@ import output
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 # torch.autograd.set_detect_anomaly(True)
 
-def initialise_depth_gaussians(seq, md, num_touches, random_selection):
+def initialise_depth_gaussians(seq, md, num_touches, random_selection, dataset):
     """
     Generate gaussians for depth point cloud. Differently from standard Gaussians,
     the 'depth' variable is set to 1.
@@ -32,8 +32,15 @@ def initialise_depth_gaussians(seq, md, num_touches, random_selection):
         variables: dict of variables
         depth_pt_cld: torch tensor of depth point cloud, shape [N, 3]
     """
+    if dataset == 'ShinyBlender':
+        dataset_dir = 'shiny-blender-3DGS'
+    elif dataset == 'GlossySynthetic':
+        dataset_dir = 'glossy-synthetic-3DGS'
+    else:
+        raise ValueError(f"Invalid dataset: {dataset}.")
+    
     try:
-        depth_pt_cld = np.load(f"{os.path.dirname(data.__file__)}/{seq}/depth_pt_cld.npz")['depth_points']
+        depth_pt_cld = np.load(f"{os.path.dirname(data.__file__)}//{seq}/depth_pt_cld.npz")['depth_points']
     except:
         print(f"Depth point cloud not found. Exiting.")
         exit()
@@ -428,7 +435,9 @@ def main(configs):#seq, exp, output_seq, args):
     grad_transmittance = None
     finite_element_transmittance = None
     if configs['explicit_depth'] or configs['density'] or configs['grad_depth'] or configs['transmittance'] or configs['grad_transmittance'] or configs['finite_element_transmittance']:
-        params_depth_init, variables_depth_init, depth_pt_cld = initialise_depth_gaussians(configs['input_seq'], md, configs['num_touches'], configs['random_selection'])
+        params_depth_init, variables_depth_init, depth_pt_cld = initialise_depth_gaussians(
+            configs['input_seq'], md, configs['num_touches'], configs['random_selection'], configs['dataset']
+        )
 
         # Combine params and variables for normal and depth gaussians
         params, variables = combine_params_and_variables(params, params_depth_init, variables, variables_depth_init)
