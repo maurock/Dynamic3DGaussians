@@ -21,7 +21,7 @@ class Evaluator:
         self.args = args
         self.dataset = args.dataset
         self.experiment_dir = os.path.join(os.path.dirname(output.__file__), self.args.exp_name, self.args.output_seq)
-        self.input_seq, self.data_dir = self.get_data_dir()
+        self.input_seq, self.data_dir = utils_data.get_data_obj_dir(self.args.exp_name, self.args.output_seq)
 
         # Extract prediction data for evaluation
         if (not self.check_pred_exists()) and (self.args.save_eval_data):
@@ -33,12 +33,7 @@ class Evaluator:
                 extract_output_data.save_output_depth_images(depth_pred_npy, self.args.exp_name, self.args.output_seq)
                 extract_output_data.save_output_rgb_images(rgb_pred_npy, self.args.exp_name, self.args.output_seq)
 
-    def get_data_dir(self):
-        """Get the data directory from eval_helper.txt stored during training"""
-        eval_helper_path = os.path.join(self.experiment_dir, "eval", "eval_helper.txt")
-        with open(eval_helper_path, "r") as f:
-            input_seq = f.readline().strip()        
-        return input_seq, os.path.join(os.path.dirname(data.__file__), input_seq)    
+        
        
     def _debug_depth(self, depth_paths):
         image = Image.open(depth_paths[0])
@@ -62,29 +57,18 @@ class Evaluator:
         print(f'depth_gt: {self.depth_gt.shape}')
         print(f'depth_pred: {self.depth_pred.shape}')
 
-    def _debug_pc(self):
+    def _debug_pc(self, pc):
         fig = go.Figure(data=[go.Scatter3d(
-            x=self.pc_gt[:, 0].cpu().numpy(),
-            y=self.pc_gt[:, 1].cpu().numpy(),
-            z=self.pc_gt[:, 2].cpu().numpy(),
+            x=pc[:, 0].cpu().numpy(),
+            y=pc[:, 1].cpu().numpy(),
+            z=pc[:, 2].cpu().numpy(),
             mode='markers',
             marker=dict(
                 size=3,
                 color='cyan',  # Different color for debug points
             ),
             name='GT Points'
-        ),
-            go.Scatter3d(
-                x=self.pc_pred[:, 0].cpu().numpy(),
-                y=self.pc_pred[:, 1].cpu().numpy(),
-                z=self.pc_pred[:, 2].cpu().numpy(),
-                mode='markers',
-                marker=dict(
-                    size=3,
-                    color='red',  # Different color for debug points
-                ),
-                name='Pred Points'
-            )])
+        )])
         fig.show()
 
     def _debug_depth(self, depth_gt, depth_pred):
@@ -143,8 +127,10 @@ class Evaluator:
             pc_gt = utils_data.load_pointcloud_gt(self.data_dir)
             pc_pred = torch.tensor(pc_pred_npy).float().cuda()
 
+            self._debug_pc(pc_pred)
             # Focus on bounding box around the object (to remove floaters)
             pc_pred = utils_data.get_points_in_bbox(pc_pred)
+            self._debug_pc(pc_pred)
 
             # Compute metrics
             cd = chamfer_distance(pc_gt.unsqueeze(0), pc_pred.unsqueeze(0))[0].item()

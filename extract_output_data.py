@@ -151,6 +151,11 @@ def extract_output_data(input_seq, exp_name, output_seq, near=0.1, far=100000.0)
     depth_all = []
     im_all = []
 
+    # Set ratio_pointcloud (amount of total points to keep) based on the number of images in the test data
+    num_images = len(camera_positions)
+    num_required_points = 200000  # some of these be filtered as they are too far
+    num_extracted_points = num_images * w * h
+    ratio_pointcloud = num_required_points / num_extracted_points
     for i in range(len(camera_positions)):
        
         w2c, k = camera_positions[i]
@@ -159,9 +164,11 @@ def extract_output_data(input_seq, exp_name, output_seq, near=0.1, far=100000.0)
         im, depth, alpha = helpers.render(w, h, k, w2c, near, far, scene_data[0])
         pts = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
 
-        # Accumulate pointcloud
+        # Filter pointcloud: reduce the number of points
         pts_npy = np.array(pts.cpu())
-        pts_npy = utils_data.filter_pointcloud(pts_npy, w2c)
+        pts_npy = utils_data.filter_pointcloud(pts_npy, w2c, ratio_pointcloud)
+
+        # Accumulate pointcloud
         pts_all.extend(pts_npy)
 
         # Accumulate depth images
@@ -174,6 +181,8 @@ def extract_output_data(input_seq, exp_name, output_seq, near=0.1, far=100000.0)
     im_all = np.array(im_all) 
     depth_all = np.array(depth_all)
     pts_all = np.array(pts_all)
+
+    print(f"[INFO] Number of points extracted: {pts_all.shape[0]}")
     
     return im_all, depth_all, pts_all
 

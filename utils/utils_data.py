@@ -9,6 +9,7 @@ import helpers
 import numpy as np
 import trimesh
 import collections
+import output
 
 def generate_seg_images(output_root_dir, rgb_folder, num_cam, img_name):
     """Generate black images PNG as everything is static currently. Images have the same size as the original images.
@@ -47,7 +48,7 @@ def get_obj_paths(dataset):
     return glob(os.path.join(objs_dir, "*.obj"))
 
 
-def filter_pointcloud(pts, w2c, ratio=0.001):
+def filter_pointcloud(pts, w2c, ratio_pointcloud):
     """Filter pointcloud to reduce the number of points stored. Filtering is done by 
     randomly sampling 0.1% of the points, as well as by eliminating points that are
     too far from the camera.
@@ -60,7 +61,7 @@ def filter_pointcloud(pts, w2c, ratio=0.001):
     dist = np.linalg.norm(pts - cam_centre, axis=1)
     pts = pts[dist < 14.5]
     # Sample N points from the total pointcloud
-    random_indices = np.random.choice(pts.shape[0], size=int(ratio * len(pts)), replace=False)
+    random_indices = np.random.choice(pts.shape[0], size=int(ratio_pointcloud * len(pts)), replace=False)
     pts = pts[random_indices]
     return pts
 
@@ -198,3 +199,21 @@ def filter_dataset(N, ratio):
     final_indexes = np.arange(N * ratio) * step
     final_indexes = [int(i) for i in final_indexes]
     return final_indexes
+
+
+def get_dataset_dir(dataset):
+    if dataset == 'ShinyBlender':
+        return 'shiny-blender-3DGS'
+    elif dataset == 'GlossySynthetic':
+        return 'glossy-synthetic-3DGS'
+    else:
+        raise ValueError(f"Invalid dataset: {dataset}. Choose between 'ShinyBlender', 'GlossySynthetic'.")
+    
+
+def get_data_obj_dir(exp_name, output_seq):
+    """Get the data directory from eval_helper.txt stored during training"""
+    experiment_dir = os.path.join(os.path.dirname(output.__file__), exp_name, output_seq)
+    eval_helper_path = os.path.join(experiment_dir, "eval", "eval_helper.txt")
+    with open(eval_helper_path, "r") as f:
+        input_seq = f.readline().strip()        
+    return input_seq, os.path.join(os.path.dirname(data.__file__), input_seq)

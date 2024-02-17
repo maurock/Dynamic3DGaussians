@@ -31,16 +31,9 @@ def initialise_depth_gaussians(seq, md, num_touches, random_selection, dataset):
         params: dict of parameters
         variables: dict of variables
         depth_pt_cld: torch tensor of depth point cloud, shape [N, 3]
-    """
-    if dataset == 'ShinyBlender':
-        dataset_dir = 'shiny-blender-3DGS'
-    elif dataset == 'GlossySynthetic':
-        dataset_dir = 'glossy-synthetic-3DGS'
-    else:
-        raise ValueError(f"Invalid dataset: {dataset}.")
-    
+    """  
     try:
-        depth_pt_cld = np.load(f"{os.path.dirname(data.__file__)}//{seq}/depth_pt_cld.npz")['depth_points']
+        depth_pt_cld = np.load(f"{os.path.dirname(data.__file__)}/{seq}/depth_pt_cld.npz")['depth_points']
     except:
         print(f"Depth point cloud not found. Exiting.")
         exit()
@@ -418,12 +411,8 @@ def save_eval_output_data(input_seq, exp_name, output_seq):
 
 def main(configs):#seq, exp, output_seq, args):
     
-    if configs['dataset'] == 'ShinyBlender':
-        configs['input_seq'] = os.path.join('shiny-blender-3DGS', configs['input_seq'])
-    elif configs['dataset'] == 'GlossySynthetic':
-        configs['input_seq'] = os.path.join('glossy-synthetic-3DGS', configs['input_seq'])
-    else:
-        raise ValueError('Invalid dataset name')
+    dataset_dir = utils_data.get_dataset_dir(configs['dataset'])
+    configs['input_seq'] = os.path.join(dataset_dir, configs['input_seq'])
     
     md = json.load(open(f"{os.path.dirname(data.__file__)}/{configs['input_seq']}/train_meta.json", 'r'))  # metadata
     num_timesteps = len(md['fn'])
