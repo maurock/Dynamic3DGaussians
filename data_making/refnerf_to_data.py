@@ -369,8 +369,11 @@ def main(args):
         sorted_ims = sorted_ims_train + sorted_ims_test
 
         # Initialise meta data ['w', 'h', 'k', 'w2c', 'fn', 'cam_id']
-        meta_train = {'w': 800, 'h': 800, 'k': None, 'w2c': [], 'fn': [], 'cam_id': []}
-        meta_test = {'w': 800, 'h': 800, 'k': None, 'w2c': [], 'fn': [], 'cam_id': []}
+        # Read H and W from first image in sorted_ims_train
+        image0 = Image.open(sorted_ims_train[0])
+        h_for_image, w_from_image = np.asarray(image0).shape[0], np.asarray(image0).shape[1] 
+        meta_train = {'w': w_from_image, 'h': h_for_image, 'k': None, 'w2c': [], 'fn': [], 'cam_id': []}
+        meta_test = {'w': w_from_image, 'h': h_for_image, 'k': None, 'w2c': [], 'fn': [], 'cam_id': []}
 
         k = create_intrinsics_matrix(
             meta_train['w'],
@@ -477,4 +480,5 @@ if __name__ == "__main__":
     parser.add_argument("--dataset", type=str, default='', help="Choose between 'ShinyBlender' or 'GlossySynthetic'")
     parser.add_argument("--output_dir", type=str, default="data/", help="Path to the output directory.")
     args = parser.parse_args()    
+
     main(args) 
