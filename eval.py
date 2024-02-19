@@ -17,21 +17,26 @@ import plotly.graph_objects as go
 from utils.utils_metrics import earth_mover_distance
 
 class Evaluator:
-    def __init__(self, args) -> None:
-        self.args = args
-        self.dataset = args.dataset
-        self.experiment_dir = os.path.join(os.path.dirname(output.__file__), self.args.exp_name, self.args.output_seq)
-        self.input_seq, self.data_dir = utils_data.get_data_obj_dir(self.args.exp_name, self.args.output_seq)
+    def __init__(self, dataset, exp_name, output_seq, save_eval_data) -> None:
+        # Parameters
+        self.dataset = dataset
+        self.exp_name = exp_name
+        self.output_seq = output_seq
+        self.save_eval_data = save_eval_data
+        
+        # Set paths
+        self.experiment_dir = os.path.join(os.path.dirname(output.__file__), self.exp_name, self.output_seq)
+        self.input_seq, self.data_dir = utils_data.get_data_obj_dir(self.exp_name, self.output_seq)
 
         # Extract prediction data for evaluation
-        if (not self.check_pred_exists()) and (self.args.save_eval_data):
+        if (not self.check_pred_exists()) and (self.save_eval_data):
             rgb_pred_npy, depth_pred_npy, pc_pred_npy = extract_output_data.extract_output_data(
-                self.input_seq, self.args.exp_name, self.args.output_seq
+                self.input_seq, self.exp_name, self.output_seq
             )                   
-            if self.args.save_eval_data:      
-                extract_output_data.save_output_pointcloud(pc_pred_npy, self.args.exp_name, self.args.output_seq)
-                extract_output_data.save_output_depth_images(depth_pred_npy, self.args.exp_name, self.args.output_seq)
-                extract_output_data.save_output_rgb_images(rgb_pred_npy, self.args.exp_name, self.args.output_seq)
+            if self.save_eval_data:      
+                extract_output_data.save_output_pointcloud(pc_pred_npy, self.exp_name, self.output_seq)
+                extract_output_data.save_output_depth_images(depth_pred_npy, self.exp_name, self.output_seq)
+                extract_output_data.save_output_rgb_images(rgb_pred_npy, self.exp_name, self.output_seq)
 
         
        
@@ -127,10 +132,8 @@ class Evaluator:
             pc_gt = utils_data.load_pointcloud_gt(self.data_dir)
             pc_pred = torch.tensor(pc_pred_npy).float().cuda()
 
-            self._debug_pc(pc_pred)
             # Focus on bounding box around the object (to remove floaters)
             pc_pred = utils_data.get_points_in_bbox(pc_pred)
-            self._debug_pc(pc_pred)
 
             # Compute metrics
             cd = chamfer_distance(pc_gt.unsqueeze(0), pc_pred.unsqueeze(0))[0].item()
@@ -141,9 +144,9 @@ class Evaluator:
     
     def evaluate_depth(self, depth_pred_npy):
         with torch.no_grad():
-            if self.args.dataset == 'ShinyBlender':
+            if self.dataset == 'ShinyBlender':
                 is_disparity = True
-            elif self.args.dataset == 'GlossySynthetic':
+            elif self.dataset == 'GlossySynthetic':
                 is_disparity = False
             else:
                 raise ValueError('Invalid dataset name')
@@ -169,7 +172,7 @@ class Evaluator:
 
         if (not self.check_pred_exists()):
             rgb_pred_npy, depth_pred_npy, pc_pred_npy = extract_output_data.extract_output_data(
-                self.input_seq, self.args.exp_name, self.args.output_seq
+                self.input_seq, self.exp_name, self.output_seq
             )  
         else:
             rgb_pred_npy = utils_data.load_prediction(self.experiment_dir, 'rgb')
@@ -204,7 +207,14 @@ class Evaluator:
             print(f'{k}: {v}')
 
 def main(args):
-    evaluator = Evaluator(args)
+    # Parameters
+    dataset = args.dataset
+    exp_name = args.exp_name
+    output_seq = args.output_seq
+    save_eval_data = args.save_eval_data
+
+    # Evaluate
+    evaluator = Evaluator(dataset, exp_name, output_seq, save_eval_data)
     evaluator.run_evaluation()
     
 

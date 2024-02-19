@@ -536,13 +536,15 @@ def main(configs):#seq, exp, output_seq, args):
                     save_params(intermediate_params, configs['output_seq'], configs['exp_name'])
                     save_variables(variables, configs['output_seq'], configs['exp_name'])
                     save_eval_helper(configs['input_seq'], configs['output_seq'], configs['exp_name'])
-
-                    parser = argparse.ArgumentParser()
-                    args = parser.parse_args()
-                    args.dataset, args.exp_name, args.output_seq, args.save_eval_data = configs['dataset'], configs['exp_name'], configs['output_seq'], configs['save_eval_data']
-                    evaluator = Evaluator(args)
+                    
+                    evaluator = Evaluator(
+                        configs['dataset'],
+                        configs['exp_name'],
+                        configs['output_seq'],
+                        configs['save_eval_data']
+                    )
                     rgb_pred_npy, depth_pred_npy, pc_pred_npy = extract_output_data.extract_output_data(
-                        evaluator.input_seq, evaluator.args.exp_name, evaluator.args.output_seq
+                        evaluator.input_seq, evaluator.exp_name, evaluator.output_seq
                     ) 
                     ssim_rgb, psnr_rgb = evaluator.evaluate_rgb(rgb_pred_npy)
                     metrics = {
@@ -571,10 +573,12 @@ def main(configs):#seq, exp, output_seq, args):
         save_eval_output_data(configs['input_seq'], configs['exp_name'], configs['output_seq'])
 
     if configs['eval']:
-        parser = argparse.ArgumentParser()
-        args = parser.parse_args()
-        args.dataset, args.exp_name, args.output_seq, args.save_eval_data = configs['dataset'], configs['exp_name'], configs['output_seq'], configs['save_eval_data']
-        evaluator = Evaluator(args)
+        evaluator = Evaluator(
+            configs['dataset'],
+            configs['exp_name'],
+            configs['output_seq'],
+            configs['save_eval_data']
+        )
         evaluator.run_evaluation()
 
 
