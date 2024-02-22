@@ -164,14 +164,16 @@ def initialize_params(seq, md):
     seg = init_pt_cld[:, 6]   # segmented, e.g. [0, 0, 1, 1, 1 ..]
     rgb_colors = init_pt_cld[:, 3:6]   # colours
     # initialise SH
-    shs_init = np.zeros((init_pt_cld.shape[0], 16, 3))  # assuming max degree = 3
+    shs_degree = 3
+    shs_num_coeffs = (shs_degree + 1) ** 2
+    shs_init = np.zeros((init_pt_cld.shape[0], shs_num_coeffs, 3))  # assuming max degree = 3
     shs_rgb = utils_sh.RGB2SH(rgb_colors)
     shs_init[:, 0, :] = shs_rgb
     max_cams = 200
     # sq_dist, _ = o3d_knn(init_pt_cld[:, :3], 3)   
     dist, _ = scipy_knn(init_pt_cld[:, :3], 3)   # return sq_sit of 3 closest points
     sq_dist = (dist**2)
-    mean3_sq_dist = sq_dist.mean(-1).clip(min=0.0000001, max=5)
+    mean3_sq_dist = sq_dist.mean(-1).clip(min=0.0000001, max=1)
     # depth 0 for depth gaussians
     depth = torch.zeros(size=(init_pt_cld.shape[0],)).cuda().float()
     # params are updated with gradient descent
@@ -214,7 +216,7 @@ def get_depth_gaussians(params, variables):
 
 def initialize_optimizer(params, variables, configs):
     lrs = {
-        'means3D': 0.0000016 * variables['scene_radius'], #0.00016 * variables['scene_radius'],
+        'means3D': 0.0000016 * variables['scene_radius'], #original: 0.00016 * variables['scene_radius'],
         #'rgb_colors': 0.00025, # 0.025,
         'seg_colors': 0.0,
         'unnorm_rotations': 0.001,
@@ -222,7 +224,7 @@ def initialize_optimizer(params, variables, configs):
         'log_scales': 0.001,
         'cam_m': 1e-4,
         'cam_c': 1e-4,
-        'shs': configs['lr_shs']  # 0.00025
+        'shs': 0.00025
     }
     param_groups = [{'params': [v], 'name': k, 'lr': lrs[k]} for k, v in params.items()]
     return torch.optim.Adam(param_groups, lr=0.0, eps=1e-15)
@@ -252,13 +254,10 @@ def get_loss(
     im, radius, depth, alpha = Renderer(raster_settings=curr_data['cam'],train=True)(**rendervar)
 
     curr_id = curr_data['id']
+    im = torch.exp(params['cam_m'][curr_id])[:, None, None] * im + params['cam_c'][curr_id][:, None, None]
     losses['im'] = 0.8 * l1_loss_v1(im, curr_data['im']) + 0.2 * (1.0 - calc_ssim(im, curr_data['im']))
     variables['means2D'] = rendervar['means2D']  # Gradient only accum from colour render for densification
 
-    # segrendervar = params2rendervar(params)
-    # segrendervar['colors_precomp'] = params['seg_colors']
-    # seg, _, _, = Renderer(raster_settings=curr_data['cam'])(**segrendervar)
-    # losses['seg'] = 0 #0.8 * l1_loss_v1(seg, curr_data['seg']) + 0.2 * (1.0 - calc_ssim(seg, curr_data['seg']))
     
     if not is_initial_timestep:
         is_fg = (params['seg_colors'][:, 0] > 0.5).detach()

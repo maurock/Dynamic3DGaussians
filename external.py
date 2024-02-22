@@ -177,7 +177,7 @@ def inverse_sigmoid(x):
 
 
 def densify(params, variables, optimizer, i, explicit_depth, iterations_densify):
-    if i <= iterations_densify:
+    if i < iterations_densify:
         variables = accumulate_mean2d_gradient(variables)
         grad_thresh = 0.0002
         if (i >= 500) and (i % 100 == 0):
@@ -224,7 +224,6 @@ def densify(params, variables, optimizer, i, explicit_depth, iterations_densify)
             params, variables = remove_points(to_remove, params, variables, optimizer)
 
             remove_threshold = 0.25 if i == 5000 else 0.005
-            #remove_threshold = 0.000005            
                          
             to_remove = (torch.sigmoid(params['logit_opacities']) < remove_threshold).squeeze()
             if i >= 3000:
@@ -244,4 +243,8 @@ def densify(params, variables, optimizer, i, explicit_depth, iterations_densify)
                 new_params['logit_opacities'][index_gaussians_depth] = inverse_sigmoid(torch.ones_like(new_params['logit_opacities'][index_gaussians_depth]) * 0.99999)
             
             params = update_params_and_optimizer(new_params, params, optimizer)
+
+    if i == iterations_densify:
+        optimizer.param_groups[7]['lr'] = optimizer.param_groups[7]['lr'] / 10 
+
     return params, variables

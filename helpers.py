@@ -250,13 +250,12 @@ def create_dirs(dirs):
             os.makedirs(dir) 
 
 
-def render(w, h, k, w2c, near, far, timestep_data,train=False):
+def render(w, h, k, w2c, near, far, optimised_params,train=False):
     with torch.no_grad():
         cam = setup_camera(w, h, k, w2c, near, far)
-        im, radius, depth, alpha = Renderer(raster_settings=cam,train=train)(**timestep_data)
+        im, radius, depth, alpha = Renderer(raster_settings=cam,train=train)(**optimised_params)
         return im, depth, alpha
-        # im, radius, depth = Renderer(raster_settings=cam)(**timestep_data)
-        # return im, depth
+
     
 def debug_smoothness_loss(
         img, 
@@ -317,10 +316,6 @@ def debug_smoothness_loss(
     plt.imshow(smoothness_y[0, 0].detach().cpu())
     plt.title('Smoothness')
     plt.show()
-
-
-
-
 
 
     
