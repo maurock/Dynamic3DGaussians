@@ -20,7 +20,7 @@ import torch
 import torch.nn.functional as func
 from torch.autograd import Variable
 from math import exp
-
+import numpy as np
 
 def build_rotation(q):
     """Quaternions to rotation matrix"""
@@ -110,8 +110,8 @@ def _ssim(img1, img2, window, window_size, channel, size_average=True):
 
 
 def accumulate_mean2d_gradient(variables):
-    variables['means2D_gradient_accum'][variables['seen']] += torch.norm(
-        variables['means2D'].grad[variables['seen'], :2], dim=-1)
+    variables['means2D_gradient_accum'][variables['seen']]+= torch.norm(
+        variables['means2D'].grad[variables['seen'], :2], dim=-1, keepdim=True)
     variables['denom'][variables['seen']] += 1
     return variables
 
@@ -185,7 +185,7 @@ def densify(params, variables, optimizer, i, explicit_depth, iterations_densify)
             grads[grads.isnan()] = 0.0
 
             # Clone gaussians that A) have a gradient above the threshold and B) are small
-            to_clone = torch.logical_and(grads >= grad_thresh, (
+            to_clone = torch.logical_and(torch.norm(grads, dim=-1) >= grad_thresh, (
                         torch.max(torch.exp(params['log_scales']), dim=1).values <= 0.01 * variables['scene_radius']))
             new_params = {k: v[to_clone] for k, v in params.items() if k not in ['cam_m', 'cam_c']}
             params = cat_params_to_optimizer(new_params, params, optimizer)
@@ -195,14 +195,15 @@ def densify(params, variables, optimizer, i, explicit_depth, iterations_densify)
             
             # Split gaussians that A) have a gradient above the threshold and B) are big
             num_pts = params['means3D'].shape[0]
-            padded_grad = torch.zeros(num_pts, device="cuda")
-            padded_grad[:grads.shape[0]] = grads
+            padded_grad = torch.zeros((num_pts), device="cuda")
+            padded_grad[:grads.shape[0]] = grads.squeeze()
             to_split = torch.logical_and(padded_grad >= grad_thresh,
                                          torch.max(torch.exp(params['log_scales']), dim=1).values > 0.01 * variables[
                                              'scene_radius'])
             n = 2  # number to split into
-            new_params = {k: v[to_split].repeat(n, 1) for k, v in params.items() if k not in ['cam_m', 'cam_c', 'shs']}
-            new_params['shs'] = params['shs'][to_split].repeat(n, 1, 1)
+            new_params = {k: v[to_split].repeat(n, 1) for k, v in params.items() if k not in ['cam_m', 'cam_c', 'shs_dc', 'shs_rest']}
+            new_params['shs_dc'] = params['shs_dc'][to_split].repeat(n, 1, 1)
+            new_params['shs_rest'] = params['shs_rest'][to_split].repeat(n, 1, 1)
             stds = torch.exp(params['log_scales'])[to_split].repeat(n, 1)
             means = torch.zeros((stds.size(0), 3), device="cuda")
             samples = torch.normal(mean=means, std=stds)
@@ -216,14 +217,15 @@ def densify(params, variables, optimizer, i, explicit_depth, iterations_densify)
             variables['depth'] = torch.cat((variables['depth'], variables['depth'][to_split].repeat(n)), dim=0)
 
             # Add new points (split and cloned) to variables
-            variables['means2D_gradient_accum'] = torch.zeros(num_pts, device="cuda")
-            variables['denom'] = torch.zeros(num_pts, device="cuda")
-            variables['max_2D_radius'] = torch.zeros(num_pts, device="cuda")
+            variables['means2D_gradient_accum'] = torch.zeros((num_pts, 1), device="cuda")
+            variables['denom'] = torch.zeros((num_pts, 1), device="cuda")
+            variables['max_2D_radius'] = torch.zeros((num_pts), device="cuda")
 
             to_remove = torch.cat((to_split, torch.zeros(n * to_split.sum(), dtype=torch.bool, device="cuda")))
             params, variables = remove_points(to_remove, params, variables, optimizer)
 
             remove_threshold = 0.25 if i == 5000 else 0.005
+            # remove_threshold = 0.005
                          
             to_remove = (torch.sigmoid(params['logit_opacities']) < remove_threshold).squeeze()
             if i >= 3000:
@@ -244,7 +246,46 @@ def densify(params, variables, optimizer, i, explicit_depth, iterations_densify)
             
             params = update_params_and_optimizer(new_params, params, optimizer)
 
-    if i == iterations_densify:
-        optimizer.param_groups[7]['lr'] = optimizer.param_groups[7]['lr'] / 10 
+    # if i == iterations_densify:
+    #     optimizer.param_groups[7]['lr'] = optimizer.param_groups[7]['lr'] / 10 
 
     return params, variables
+
+
+def means_scheduler_args(
+        step,
+        lr_init,
+        lr_final,
+        lr_delay_steps=0,
+        lr_delay_mult=1.0,
+        max_steps=1000000
+):
+    """
+    Copied from Plenoxels
+
+    Continuous learning rate decay function. Adapted from JaxNeRF
+    The returned rate is lr_init when step=0 and lr_final when step=max_steps, and
+    is log-linearly interpolated elsewhere (equivalent to exponential decay).
+    If lr_delay_steps>0 then the learning rate will be scaled by some smooth
+    function of lr_delay_mult, such that the initial learning rate is
+    lr_init*lr_delay_mult at the beginning of optimization but will be eased back
+    to the normal learning rate when steps>lr_delay_steps.
+    :param conf: config subtree 'lr' or similar
+    :param max_steps: int, the number of steps during optimization.
+    :return HoF which takes step as input
+    """
+
+    if step < 0 or (lr_init == 0.0 and lr_final == 0.0):
+        # Disable this parameter
+        return 0.0
+    if lr_delay_steps > 0:
+        # A kind of reverse cosine decay.
+        delay_rate = lr_delay_mult + (1 - lr_delay_mult) * np.sin(
+            0.5 * np.pi * np.clip(step / lr_delay_steps, 0, 1)
+        )
+    else:
+        delay_rate = 1.0
+    t = np.clip(step / max_steps, 0, 1)
+    log_lerp = np.exp(np.log(lr_init) * (1 - t) + np.log(lr_final) * t)
+    return delay_rate * log_lerp
+

@@ -14,6 +14,7 @@ import json
 import matplotlib.cm as cm
 import output
 import helpers
+import matplotlib.pyplot as plt
 
 """
 Visualiser. This method was modified from the original code for better interactivity.
@@ -68,7 +69,7 @@ def load_scene_data(seq, exp, seg_as_col=False):
         rendervar = {
             'means3D': params['means3D'][t],
             #'colors_precomp': params['rgb_colors'][t] if not seg_as_col else params['seg_colors'],
-            'shs': params['shs'],
+            'shs': torch.cat((params['shs_dc'], params['shs_rest']), dim=1),
             'rotations': torch.nn.functional.normalize(params['unnorm_rotations'][t]),
             'opacities': torch.sigmoid(params['logit_opacities']),
             'scales': torch.exp(params['log_scales']),
@@ -132,7 +133,7 @@ def calculate_rot_vec(scene_data, is_fg):
 
 def rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None):
     d_near = 0.9
-    d_far = 6
+    d_far = 5
     invk = torch.inverse(torch.tensor(k).cuda().float())
     c2w = torch.inverse(torch.tensor(w2c).cuda().float())
     radial_depth = depth[0].reshape(-1)
@@ -175,8 +176,24 @@ def change_camera(vis, camera_positions, camera_index):
     return False
 
 
+def take_pictures(vis,depth,im,exp_name,output_seq):
+    # Process depth
+    d_near = 2
+    d_far = 5
+    new_depth = depth[0].cpu().numpy()
+    mask = new_depth < d_far
+    normalised_depth = (new_depth - d_near) / (d_far - d_near)
+    new_cols = colormappa(normalised_depth)
+    new_cols = new_cols * mask[..., None]
+    plt.imsave(f'images/{exp_name}_{output_seq}_depth.png', new_cols)
+
+    # Save plt image
+    new_im = im.permute(1,2,0).clip(0,1).cpu().numpy()
+    new_im = np.where(mask[...,None]==1, new_im, np.ones_like(new_im))
+    plt.imsave(f'images/{exp_name}_{output_seq}_rgb.png', new_im)
+
+
 def plot_views(vis,depth,im):
-    import matplotlib.pyplot as plt
     plt.figure(figsize=(30,10))
     plt.subplot(1,2,1)
     plt.imshow(im.permute(1,2,0).cpu().numpy())
@@ -242,6 +259,9 @@ def visualize(input_seq, exp, output_seq):
     vis.register_key_callback(ord('M'), lambda vis: toggle_mode(vis, mode))  # Bind 'M' key to toggle mode
 
     vis.register_key_callback(ord('A'), lambda vis: plot_views(vis, depth, im))  # Bind 'M' key to toggle mode
+
+    vis.register_key_callback(ord('P'), lambda vis: take_pictures(vis, depth, im, exp_name, output_seq))  # Bind 'M' key to toggle mode
+
 
 
     # w2c, k = init_camera()
@@ -319,7 +339,7 @@ def visualize(input_seq, exp, output_seq):
             cols = o3d.utility.Vector3dVector(scene_data[t]['colors_precomp'].contiguous().double().cpu().numpy())
         else:
             im, depth, alpha = helpers.render(w, h, k, w2c, near, far, scene_data[0])
-            # im, depth = helpers.render(w, h, k, w2c, near, far, scene_data[0])
+
             pts, cols = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
 
             if mode[0] == 'depth':
@@ -363,16 +383,16 @@ def visualize(input_seq, exp, output_seq):
 if __name__ == "__main__":
 
     # Dataset
-    # dataset_dir = "shiny-blender-3DGS"
-    dataset_dir = "glossy-synthetic-3DGS"
+    dataset_dir = "shiny-blender-3DGS"
+    # dataset_dir = "glossy-synthetic-3DGS"
 
     # Input
-    obj = "cat"
+    obj = "teapot"
     input_seq = os.path.join(dataset_dir, obj)
 
     # Output
-    exp_name = "cat_try"
-    output_seq = "cat_1"
+    exp_name = "teapot_temp2"
+    output_seq = "teapot_try"
 
     # Visualise
     for sequence in [output_seq]: #, "boxes", "football", "juggle", "softball", "tennis"]:

@@ -9,7 +9,7 @@ from tqdm import tqdm
 from diff_gaussian_rasterization import GaussianRasterizer as Renderer
 from helpers import setup_camera, l1_loss_v1, l1_loss_v2, weighted_l2_loss_v1, weighted_l2_loss_v2, quat_mult, \
     params2rendervar, params2cpu, save_params, save_variables, save_eval_helper, read_config, save_config, scipy_knn
-from external import calc_ssim, calc_psnr, build_rotation, densify, update_params_and_optimizer, inverse_sigmoid
+from external import calc_ssim, calc_psnr, build_rotation, densify, update_params_and_optimizer, inverse_sigmoid, means_scheduler_args
 from pytorch3d.loss import chamfer_distance
 import argparse
 from utils import utils_mesh, utils_gaussian, utils_data, utils_sh
@@ -45,12 +45,19 @@ def initialise_depth_gaussians(seq, md, num_touches, random_selection, dataset):
     else:
         depth_pt_cld = depth_pt_cld[:num_touches].reshape(-1, 3)
 
+
     # seg set to 1 for depth gaussians
     seg = np.ones(shape=(depth_pt_cld.shape[0])) # segmented, e.g. [0, 0, 1, 1, 1 ..]
     # colours always set to grey
-    rgb = np.ones(shape=(depth_pt_cld.shape[0], 3)) * 0.5
+    # rgb = np.ones(shape=(depth_pt_cld.shape[0], 3)) * 0.5
     # depth 1 for depth gaussians
     depth = torch.ones(size=(depth_pt_cld.shape[0],)).cuda().float()
+
+    shs_degree = 3
+    shs_num_coeffs = (shs_degree + 1) ** 2
+    shs_rest = np.zeros((depth_pt_cld.shape[0], shs_num_coeffs - 1, 3))  # assuming max degree = 3
+
+    shs_colors_dc = np.random.random((depth_pt_cld.shape[0], 3)) / 255.0
 
     max_cams = 100
     # sq_dist_1, _ = o3d_knn(depth_pt_cld[:, :3], 3)
@@ -67,17 +74,18 @@ def initialise_depth_gaussians(seq, md, num_touches, random_selection, dataset):
         'log_scales': np.tile(np.log(np.sqrt(mean3_sq_dist))[..., None], (1, 3)),
         'cam_m': np.zeros((max_cams, 3)),
         'cam_c': np.zeros((max_cams, 3)),
-        'shs': np.zeros((depth_pt_cld.shape[0], 16, 3)),
+        'shs_dc': np.expand_dims(shs_colors_dc, 1),
+        'shs_rest': shs_rest
     }
     params = {k: torch.nn.Parameter(torch.tensor(v).cuda().float().contiguous().requires_grad_(True)) for k, v in params.items()}
 
     cam_centers = np.linalg.inv(md['w2c'][0])[:, :3, 3]  # Get scene radius
     scene_radius = 1.1 * np.max(np.linalg.norm(cam_centers - np.mean(cam_centers, 0)[None], axis=-1))
     # variables are NOT updated with gradient descent
-    variables = {'max_2D_radius': torch.zeros(params['means3D'].shape[0]).cuda().float(),
+    variables = {'max_2D_radius': torch.zeros((params['means3D'].shape[0])).cuda().float(),
                  'scene_radius': scene_radius,
-                 'means2D_gradient_accum': torch.zeros(params['means3D'].shape[0]).cuda().float(),
-                 'denom': torch.zeros(params['means3D'].shape[0]).cuda().float(),
+                 'means2D_gradient_accum': torch.zeros((params['means3D'].shape[0], 1)).cuda().float(),
+                 'denom': torch.zeros((params['means3D'].shape[0], 1)).cuda().float(),
                  'depth': depth
                  }
 
@@ -160,17 +168,21 @@ def initialize_params(seq, md):
         seq: name of the data sequence, e.g. "basketball"
         md: metadata
     """
-    init_pt_cld = np.load(f"{os.path.dirname(data.__file__)}/{seq}/init_pt_cld.npz")["data"]
-    seg = init_pt_cld[:, 6]   # segmented, e.g. [0, 0, 1, 1, 1 ..]
-    rgb_colors = init_pt_cld[:, 3:6]   # colours
+    # Random initialisation of pointcloud
+    init_pt_cld = np.random.random((10000, 3)) * 2.6 - 1.3
+    shs_colors_dc = np.random.random((10000, 3)) / 255.0
+    seg = np.ones(10000)
+
+    # Initialisation of pointcloud based on COLMAP
+    # init_pt_cld = np.load(f"{os.path.dirname(data.__file__)}/{seq}/init_pt_cld.npz")["data"]
+    # seg = init_pt_cld[:, 6]   # segmented, e.g. [0, 0, 1, 1, 1 ..]
+    # rgb_colors = init_pt_cld[:, 3:6]   # colours
     # initialise SH
     shs_degree = 3
     shs_num_coeffs = (shs_degree + 1) ** 2
-    shs_init = np.zeros((init_pt_cld.shape[0], shs_num_coeffs, 3))  # assuming max degree = 3
-    shs_rgb = utils_sh.RGB2SH(rgb_colors)
-    shs_init[:, 0, :] = shs_rgb
+    shs_rest = np.zeros((init_pt_cld.shape[0], shs_num_coeffs - 1, 3))  # assuming max degree = 3
+
     max_cams = 200
-    # sq_dist, _ = o3d_knn(init_pt_cld[:, :3], 3)   
     dist, _ = scipy_knn(init_pt_cld[:, :3], 3)   # return sq_sit of 3 closest points
     sq_dist = (dist**2)
     mean3_sq_dist = sq_dist.mean(-1).clip(min=0.0000001, max=1)
@@ -182,21 +194,22 @@ def initialize_params(seq, md):
         #'rgb_colors': init_pt_cld[:, 3:6],    # (num_gaussians, 3)
         'seg_colors': np.stack((seg, np.zeros_like(seg), 1 - seg), -1),
         'unnorm_rotations': np.tile([1, 0, 0, 0], (seg.shape[0], 1)),
-        'logit_opacities': np.zeros((seg.shape[0], 1)),
+        'logit_opacities': inverse_sigmoid(0.1 * torch.ones((seg.shape[0], 1), dtype=torch.float, device="cuda")),
         'log_scales': np.tile(np.log(np.sqrt(mean3_sq_dist))[..., None], (1, 3)),
         'cam_m': np.zeros((max_cams, 3)),
         'cam_c': np.zeros((max_cams, 3)),
-        'shs': shs_init
+        'shs_dc': np.expand_dims(shs_colors_dc, 1),
+        'shs_rest': shs_rest
     }
     params = {k: torch.nn.Parameter(torch.tensor(v).cuda().float().contiguous().requires_grad_(True)) for k, v in
               params.items()}
     cam_centers = np.linalg.inv(md['w2c'][0])[:, :3, 3]  # Get scene radius
     scene_radius = 1.1 * np.max(np.linalg.norm(cam_centers - np.mean(cam_centers, 0)[None], axis=-1))
     # variables are NOT updated with gradient descent
-    variables = {'max_2D_radius': torch.zeros(params['means3D'].shape[0]).cuda().float(),
+    variables = {'max_2D_radius': torch.zeros((params['means3D'].shape[0])).cuda().float(),
                  'scene_radius': scene_radius,
-                 'means2D_gradient_accum': torch.zeros(params['means3D'].shape[0]).cuda().float(),
-                 'denom': torch.zeros(params['means3D'].shape[0]).cuda().float(),
+                 'means2D_gradient_accum': torch.zeros((params['means3D'].shape[0], 1)).cuda().float(),
+                 'denom': torch.zeros((params['means3D'].shape[0], 1)).cuda().float(),
                  'depth': depth}
     return params, variables
 
@@ -216,15 +229,16 @@ def get_depth_gaussians(params, variables):
 
 def initialize_optimizer(params, variables, configs):
     lrs = {
-        'means3D': 0.0000016 * variables['scene_radius'], #original: 0.00016 * variables['scene_radius'],
+        'means3D': 0.00016 * variables['scene_radius'], #original: 0.00016 * variables['scene_radius'],
         #'rgb_colors': 0.00025, # 0.025,
         'seg_colors': 0.0,
         'unnorm_rotations': 0.001,
         'logit_opacities': 0.05,
-        'log_scales': 0.001,
+        'log_scales': 0.005,
         'cam_m': 1e-4,
         'cam_c': 1e-4,
-        'shs': 0.00025
+        'shs_dc': 0.0025,
+        'shs_rest': 0.000125
     }
     param_groups = [{'params': [v], 'name': k, 'lr': lrs[k]} for k, v in params.items()]
     return torch.optim.Adam(param_groups, lr=0.0, eps=1e-15)
@@ -250,42 +264,13 @@ def get_loss(
 
     rendervar = params2rendervar(params)
     rendervar['means2D'].retain_grad()
-    
+
     im, radius, depth, alpha = Renderer(raster_settings=curr_data['cam'],train=True)(**rendervar)
 
     curr_id = curr_data['id']
-    im = torch.exp(params['cam_m'][curr_id])[:, None, None] * im + params['cam_c'][curr_id][:, None, None]
     losses['im'] = 0.8 * l1_loss_v1(im, curr_data['im']) + 0.2 * (1.0 - calc_ssim(im, curr_data['im']))
     variables['means2D'] = rendervar['means2D']  # Gradient only accum from colour render for densification
-
     
-    if not is_initial_timestep:
-        is_fg = (params['seg_colors'][:, 0] > 0.5).detach()
-        fg_pts = rendervar['means3D'][is_fg]
-        fg_rot = rendervar['rotations'][is_fg]
-
-        rel_rot = quat_mult(fg_rot, variables["prev_inv_rot_fg"])
-        rot = build_rotation(rel_rot)
-        neighbor_pts = fg_pts[variables["neighbor_indices"]]
-        curr_offset = neighbor_pts - fg_pts[:, None]
-        curr_offset_in_prev_coord = (rot.transpose(2, 1)[:, None] @ curr_offset[:, :, :, None]).squeeze(-1)
-        losses['rigid'] = weighted_l2_loss_v2(curr_offset_in_prev_coord, variables["prev_offset"],
-                                              variables["neighbor_weight"])
-
-        losses['rot'] = weighted_l2_loss_v2(rel_rot[variables["neighbor_indices"]], rel_rot[:, None],
-                                            variables["neighbor_weight"])
-
-        curr_offset_mag = torch.sqrt((curr_offset ** 2).sum(-1) + 1e-20)
-        losses['iso'] = weighted_l2_loss_v1(curr_offset_mag, variables["neighbor_dist"], variables["neighbor_weight"])
-
-        losses['floor'] = torch.clamp(fg_pts[:, 1], min=0).mean()
-
-        bg_pts = rendervar['means3D'][~is_fg]
-        bg_rot = rendervar['rotations'][~is_fg]
-        losses['bg'] = l1_loss_v2(bg_pts, variables["init_bg_pts"]) + l1_loss_v2(bg_rot, variables["init_bg_rot"])
-
-        losses['soft_col_cons'] = l1_loss_v2(params['rgb_colors'], variables["prev_col"])
-
     # Add depth component to loss if depth point cloud is available        
     if explicit_depth:
         indices_gaussians_depth = torch.nonzero(variables['depth'])[:, 0]
@@ -408,7 +393,25 @@ def save_eval_output_data(input_seq, exp_name, output_seq):
     extract_output_data.save_output_rgb_images(rgb_pred_npy, exp_name, output_seq)
 
 
+def update_lr_means3D(optimizer, i, scene_radius):
+    ''' Learning rate scheduling per step '''
+    for param_group in optimizer.param_groups:
+        if param_group["name"] == "means3D":
+            lr = means_scheduler_args(i, lr_init=0.00016*scene_radius, lr_final=0.0000016*scene_radius, max_steps=configs['iterations'])
+            param_group['lr'] = lr
+            break
+
+
 def main(configs):#seq, exp, output_seq, args):
+
+    output_dir = os.path.join(
+        os.path.dirname(output.__file__),
+        configs['exp_name'],
+        configs['output_seq']
+    )
+    if os.path.exists(os.path.dirname(output_dir)):
+        print(f'Output folder {configs["exp_name"]}/{configs["output_seq"]} already exists. Exiting.')
+        return
     
     dataset_dir = utils_data.get_dataset_dir(configs['dataset'])
     configs['input_seq'] = os.path.join(dataset_dir, configs['input_seq'])
@@ -453,6 +456,8 @@ def main(configs):#seq, exp, output_seq, args):
         for i in range(num_iter_per_timestep):
             curr_data = get_batch(todo_dataset, dataset)
 
+            update_lr_means3D(optimizer, i, variables['scene_radius'])
+               
             # Optimise depth gaussians depending on the method
             if configs['density']:
                 density_mean = utils_gaussian.calculate_density(
@@ -556,8 +561,6 @@ def main(configs):#seq, exp, output_seq, args):
 
         progress_bar.close()
         output_params.append(params2cpu(params, is_initial_timestep))
-        if is_initial_timestep:
-            variables = initialize_post_first_timestep(params, variables, optimizer)
 
     if os.path.exists(f"{os.path.dirname(output.__file__)}/{configs['exp_name']}/{configs['output_seq']}"):
         print(f"Experiment {configs['exp_name']} for sequence {configs['input_seq']} already exists. Exiting.")

@@ -55,7 +55,7 @@ def load_scene_data(seq, exp, seg_as_col=False):
         rendervar = {
             'means3D': params['means3D'][t],
             # 'colors_precomp': params['rgb_colors'][t] if not seg_as_col else params['seg_colors'],
-            'shs': params['shs'],
+            'shs': torch.cat((params['shs_dc'], params['shs_rest']), dim=1),
             'rotations': torch.nn.functional.normalize(params['unnorm_rotations'][t]),
             'opacities': torch.sigmoid(params['logit_opacities']),
             'scales': torch.exp(params['log_scales']),

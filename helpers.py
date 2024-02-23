@@ -50,11 +50,11 @@ def params2rendervar(params):
     rendervar = {
         'means3D': params['means3D'],
         #'colors_precomp': params['rgb_colors'],
-        'shs': params['shs'],
         'rotations': torch.nn.functional.normalize(params['unnorm_rotations']),
         'opacities': torch.sigmoid(params['logit_opacities']),
         'scales': torch.exp(params['log_scales']),   # maybe because some gaussians are very big and some very small? 
-        'means2D': torch.zeros_like(params['means3D'], requires_grad=True, device="cuda") + 0
+        'means2D': torch.zeros_like(params['means3D'], requires_grad=True, device="cuda") + 0,
+        'shs': torch.cat((params['shs_dc'], params['shs_rest']), dim=1)
     }
     return rendervar
 
