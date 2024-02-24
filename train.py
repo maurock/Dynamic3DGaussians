@@ -368,11 +368,11 @@ def save_eval_output_data(input_seq, exp_name, output_seq):
     extract_output_data.save_output_rgb_images(rgb_pred_npy, exp_name, output_seq)
 
 
-def update_lr_means3D(optimizer, i, scene_radius):
+def update_lr_means3D(optimizer, i, scene_radius, iterations):
     ''' Learning rate scheduling per step '''
     for param_group in optimizer.param_groups:
         if param_group["name"] == "means3D":
-            lr = means_scheduler_args(i, lr_init=0.00016*scene_radius, lr_final=0.0000016*scene_radius, max_steps=configs['iterations'])
+            lr = means_scheduler_args(i, lr_init=0.00016*scene_radius, lr_final=0.0000016*scene_radius, max_steps=iterations)
             param_group['lr'] = lr
             break
 
@@ -431,7 +431,7 @@ def main(configs):#seq, exp, output_seq, args):
         for i in range(num_iter_per_timestep):
             curr_data = get_batch(todo_dataset, dataset)
 
-            update_lr_means3D(optimizer, i, variables['scene_radius'])
+            update_lr_means3D(optimizer, i, variables['scene_radius'], configs['iterations'])
                
             # Optimise depth gaussians depending on the method
             if configs['density']:
