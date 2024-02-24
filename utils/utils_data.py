@@ -86,21 +86,35 @@ def load_meta_file(data_dir, flag):
     return meta
 
 
-def load_rgb_gt(data_dir, partition):
-    """Load the ground truth RGB images from a specified directory.
+def load_single_rgb_gt(rgb_path, bg=np.array([0., 0., 0.])):
+    """Load a single ground truth RGB image and apply alpha blending with background color.
     Parameters:
-        data_dir (str): Absolute path to the object data directory, e.g. <path_to_data>/toaster
-        partition (str): Flag to indicate the type of data to load: 'train', 'test'
+        rgb_path (str): Absolute path to the image file.
+        bg (np.array): Background color for alpha blending, default is black.
     Return:
-        rgb_images (torch.Tensor): Images of shape [num_images, H, W, 3]
+        torch.Tensor: Image tensor of shape [H, W, 3].
+    """
+    image = PIL_Image.open(rgb_path)
+    im_data = np.array(image.convert("RGBA"))
+    norm_data = im_data / 255.0
+    arr = norm_data[:,:,:3] * norm_data[:, :, 3:4] + bg * (1 - norm_data[:, :, 3:4])
+    return torch.tensor(arr).float().cuda()
+
+
+def load_rgb_gt(data_dir, partition, bg=np.array([0., 0., 0.])):
+    """Load all ground truth RGB images from a specified directory.
+    Parameters:
+        data_dir (str): Absolute path to the object data directory.
+        partition (str): Flag to indicate the type of data to load: 'train', 'test'.
+    Return:
+        torch.Tensor: Images tensor of shape [num_images, H, W, 3].
     """
     meta = load_meta_file(data_dir, partition)
     rgb_paths = [os.path.join(data_dir, 'ims', x) for x in meta['fn'][0]]
 
-    # Convert image path to torch tensor
-    rgb_images = torch.stack([helpers.load_rgb_image(x).permute(1, 2, 0) for x in rgb_paths],dim=0)[...,:3]
+    ims = [load_single_rgb_gt(rgb_path, bg) for rgb_path in rgb_paths]
+    rgb_images = torch.stack(ims, dim=0)
     return rgb_images
-
 
 def load_depth_gt(data_dir, partition, is_disparity):
     """Load the disparity images from a selected directory and convert them to depth images.

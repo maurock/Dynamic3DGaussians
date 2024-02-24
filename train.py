@@ -139,13 +139,10 @@ def get_dataset(t, md, configs):
         cam = setup_camera(w, h, k, w2c, near=0.01, far=100.0)
         fn = md['fn'][t][c]
         
-        # IMPORTANT: alpha blending with background and alpha channel
+        # IMPORTANT: load data with alpha blending (background and alpha channel)
         bg = cam.bg.cpu().numpy()  
-        image = Image.open(f"{os.path.dirname(data.__file__)}/{seq}/ims/{fn}")
-        im_data = np.array(image.convert("RGBA"))
-        norm_data = im_data / 255.0
-        arr = norm_data[:,:,:3] * norm_data[:, :, 3:4] + bg * (1 - norm_data[:, :, 3:4])  # alpha blending with background colour
-        im = torch.tensor(arr).float().cuda().permute(2, 0, 1)# / 255
+        rgb_path = f"{os.path.dirname(data.__file__)}/{seq}/ims/{fn}"
+        im = utils_data.load_single_rgb_gt(rgb_path, bg=bg).permute(2, 0, 1)
 
         seg = np.array(copy.deepcopy(Image.open(f"{os.path.dirname(data.__file__)}/{seq}/seg/{fn.replace('.jpg', '.png')}"))).astype(np.float32)
         seg = torch.tensor(seg).float().cuda()
