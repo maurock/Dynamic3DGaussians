@@ -322,7 +322,7 @@ def extract_pointcloud_gt(output_obj_dir, dataset):
         p_w_cpu = utils_data.filter_pointcloud(
             p_w.cpu().numpy(),
             w2c_all[idx].cpu().numpy(),
-            ratio=1
+            ratio_pointcloud=1
         )
         
         pointcloud_all.extend(p_w_cpu)
@@ -350,7 +350,7 @@ def main(args):
     
         input_obj_dir = os.path.join(input_dir, obj)
 
-        output_obj_dir = os.path.join(args.output_dir, dataset_dir, obj)
+        output_obj_dir = os.path.join(args.output_dir, dataset_dir, obj)    # e.g. output_obj_dir = "data/shiny-blender-3DGS/toaster"
 
         # Read RefNeRF json files
         json_path_train = os.path.join(input_obj_dir, "transforms_train.json")
@@ -389,8 +389,7 @@ def main(args):
             helpers.create_dirs([cam_image_dir, depth_image_dir, seg_image_dir])
 
             # Convert image PNG to JPEG and save it
-            im = Image.open(sorted_ims[i])
-            im.save(os.path.join(cam_image_dir, "render.png"))
+            shutil.copy2(sorted_ims[i], os.path.join(cam_image_dir, "render.png"))
 
             # Copy depth images
             if args.dataset == 'ShinyBlender':
@@ -468,7 +467,7 @@ def main(args):
         # Extract ground truth point cloud
         if args.dataset == 'ShinyBlender':
             output_seq_dir = os.path.join(os.path.dirname(data.__file__), obj)
-            extract_pointcloud_gt(output_seq_dir, dataset=args.dataset)
+            extract_pointcloud_gt(output_obj_dir, dataset=args.dataset)
         elif args.dataset == 'GlossySynthetic':
             shutil.copy(os.path.join(input_obj_dir, 'gt_pt_cld.npz'), os.path.join(output_obj_dir, "gt_pt_cld.npz"))
 

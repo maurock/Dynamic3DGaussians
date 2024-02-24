@@ -267,7 +267,7 @@ def visualize(input_seq, exp, output_seq):
     # w2c, k = init_camera()
     w2c, k = camera_positions[camera_index[0]]
 
-    im, depth, alpha = helpers.render(w, h, k, w2c, near, far, scene_data[0])
+    im, depth = helpers.render(w, h, k, w2c, near, far, scene_data[0])
     # im, depth = helpers.render(w, h, k, w2c, near, far, scene_data[0])
 
     init_pts, init_cols = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
@@ -338,7 +338,7 @@ def visualize(input_seq, exp, output_seq):
             pts = o3d.utility.Vector3dVector(scene_data[t]['means3D'].contiguous().double().cpu().numpy())
             cols = o3d.utility.Vector3dVector(scene_data[t]['colors_precomp'].contiguous().double().cpu().numpy())
         else:
-            im, depth, alpha = helpers.render(w, h, k, w2c, near, far, scene_data[0])
+            im, depth = helpers.render(w, h, k, w2c, near, far, scene_data[0])
 
             pts, cols = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
 
@@ -391,8 +391,8 @@ if __name__ == "__main__":
     input_seq = os.path.join(dataset_dir, obj)
 
     # Output
-    exp_name = "teapot_temp2"
-    output_seq = "teapot_try"
+    exp_name = "toaster_try"
+    output_seq = "toaster_colmapinit_img2"
 
     # Visualise
     for sequence in [output_seq]: #, "boxes", "football", "juggle", "softball", "tennis"]:

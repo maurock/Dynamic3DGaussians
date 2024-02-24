@@ -119,10 +119,11 @@ class Evaluator:
             ssims = []
             psnrs = []
             for i in range(0, len(rgb_gt), batch_size):
-                ssims.append(external.calc_ssim(rgb_gt[i:i+batch_size], rgb_pred[i:i+batch_size]))
-                psnrs.extend(external.calc_psnr(rgb_gt[i:i+batch_size], rgb_pred[i:i+batch_size]).mean(1))
+                ssims.append(external.calc_ssim(rgb_gt[i:i+batch_size], rgb_pred[i:i+batch_size].clip(0,1)))
+                psnrs.extend(external.calc_psnr(rgb_gt[i:i+batch_size], rgb_pred[i:i+batch_size].clip(0,1)).mean(1))
             ssim_rgb = torch.stack(ssims).mean().item()
             psnr_rgb = torch.cat(psnrs).mean().item()
+
         torch.cuda.empty_cache()
         return ssim_rgb, psnr_rgb
     

@@ -151,7 +151,7 @@ def cat_params_to_optimizer(new_params, params, optimizer):
 
 def remove_points(to_remove, params, variables, optimizer):
     to_keep = ~to_remove
-    keys = [k for k in params.keys() if k not in ['cam_m', 'cam_c']]
+    keys = [k for k in params.keys()]
     for k in keys:
         group = [g for g in optimizer.param_groups if g['name'] == k][0]
         stored_state = optimizer.state.get(group['params'][0], None)
@@ -187,7 +187,7 @@ def densify(params, variables, optimizer, i, explicit_depth, iterations_densify)
             # Clone gaussians that A) have a gradient above the threshold and B) are small
             to_clone = torch.logical_and(torch.norm(grads, dim=-1) >= grad_thresh, (
                         torch.max(torch.exp(params['log_scales']), dim=1).values <= 0.01 * variables['scene_radius']))
-            new_params = {k: v[to_clone] for k, v in params.items() if k not in ['cam_m', 'cam_c']}
+            new_params = {k: v[to_clone] for k, v in params.items()}
             params = cat_params_to_optimizer(new_params, params, optimizer)
 
             # Add depth to variables after cloning
@@ -201,7 +201,7 @@ def densify(params, variables, optimizer, i, explicit_depth, iterations_densify)
                                          torch.max(torch.exp(params['log_scales']), dim=1).values > 0.01 * variables[
                                              'scene_radius'])
             n = 2  # number to split into
-            new_params = {k: v[to_split].repeat(n, 1) for k, v in params.items() if k not in ['cam_m', 'cam_c', 'shs_dc', 'shs_rest']}
+            new_params = {k: v[to_split].repeat(n, 1) for k, v in params.items() if k not in ['shs_dc', 'shs_rest']}
             new_params['shs_dc'] = params['shs_dc'][to_split].repeat(n, 1, 1)
             new_params['shs_rest'] = params['shs_rest'][to_split].repeat(n, 1, 1)
             stds = torch.exp(params['log_scales'])[to_split].repeat(n, 1)

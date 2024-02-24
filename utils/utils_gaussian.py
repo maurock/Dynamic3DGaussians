@@ -312,7 +312,7 @@ def alpha_zero_one(alpha, eps=torch.tensor([1e-3]).cuda()):
 
 
 # Code adapted from https://github.com/brownvc/diffdiffdepth/blob/main/loss.py
-def edge_aware_smoothness_per_pixel(img, pred, i, alpha):
+def edge_aware_smoothness_per_pixel(img, pred, i):
     """ A measure of how closely the gradients of a predicted disparity/depth map match the 
     gradients of the RGB image. 
 

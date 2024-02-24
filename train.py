@@ -45,21 +45,17 @@ def initialise_depth_gaussians(seq, md, num_touches, random_selection, dataset):
     else:
         depth_pt_cld = depth_pt_cld[:num_touches].reshape(-1, 3)
 
-
     # seg set to 1 for depth gaussians
     seg = np.ones(shape=(depth_pt_cld.shape[0])) # segmented, e.g. [0, 0, 1, 1, 1 ..]
-    # colours always set to grey
-    # rgb = np.ones(shape=(depth_pt_cld.shape[0], 3)) * 0.5
     # depth 1 for depth gaussians
     depth = torch.ones(size=(depth_pt_cld.shape[0],)).cuda().float()
 
+    # Initialise SH
     shs_degree = 3
     shs_num_coeffs = (shs_degree + 1) ** 2
-    shs_rest = np.zeros((depth_pt_cld.shape[0], shs_num_coeffs - 1, 3))  # assuming max degree = 3
-
+    shs_rest = np.zeros((depth_pt_cld.shape[0], shs_num_coeffs - 1, 3))
     shs_colors_dc = np.random.random((depth_pt_cld.shape[0], 3)) / 255.0
 
-    max_cams = 100
     # sq_dist_1, _ = o3d_knn(depth_pt_cld[:, :3], 3)
     dist, _ = scipy_knn(depth_pt_cld[:, :3], 3)
     sq_dist = (dist**2)
@@ -72,8 +68,6 @@ def initialise_depth_gaussians(seq, md, num_touches, random_selection, dataset):
         'unnorm_rotations': np.tile([1, 0, 0, 0], (seg.shape[0], 1)),
         'logit_opacities': np.array(inverse_sigmoid(torch.ones(size=(depth_pt_cld.shape[0], 1)) * 0.99999)),
         'log_scales': np.tile(np.log(np.sqrt(mean3_sq_dist))[..., None], (1, 3)),
-        'cam_m': np.zeros((max_cams, 3)),
-        'cam_c': np.zeros((max_cams, 3)),
         'shs_dc': np.expand_dims(shs_colors_dc, 1),
         'shs_rest': shs_rest
     }
@@ -127,7 +121,6 @@ def get_dataset(t, md, configs):
     """
     A dataset is a list of dictionaries, every element in the list refers to a camera at current current timestep `t`. 
     Example: 50 cameras -> `len(dataset) = 50`
-
     The keys are: `dict_keys(['cam', 'im', 'seg', 'id'])`` 
     - 'cam': obj of type GaussianRasterisationSetting
     - 'im': torch.tensor, shape [3, height, width] 
@@ -138,7 +131,6 @@ def get_dataset(t, md, configs):
     seq = configs['input_seq']
     ratio = configs['ratio_data']
 
-    # N:10
     data_indexes = utils_data.filter_dataset(len(md['fn'][t]), ratio)
 
     for c in data_indexes:  # md['fn'][t] is a list of the image paths at time t, e.g. [0/a.jpg, 3/a.jpg, ..] 
@@ -146,11 +138,19 @@ def get_dataset(t, md, configs):
         w, h, k, w2c = md['w'], md['h'], md['k'][t][c], md['w2c'][t][c]
         cam = setup_camera(w, h, k, w2c, near=0.01, far=100.0)
         fn = md['fn'][t][c]
-        im = np.array(copy.deepcopy(Image.open(f"{os.path.dirname(data.__file__)}/{seq}/ims/{fn}")))[..., :3]
-        im = torch.tensor(im).float().cuda().permute(2, 0, 1) / 255
+        
+        # IMPORTANT: alpha blending with background and alpha channel
+        bg = cam.bg.cpu().numpy()  
+        image = Image.open(f"{os.path.dirname(data.__file__)}/{seq}/ims/{fn}")
+        im_data = np.array(image.convert("RGBA"))
+        norm_data = im_data / 255.0
+        arr = norm_data[:,:,:3] * norm_data[:, :, 3:4] + bg * (1 - norm_data[:, :, 3:4])  # alpha blending with background colour
+        im = torch.tensor(arr).float().cuda().permute(2, 0, 1)# / 255
+
         seg = np.array(copy.deepcopy(Image.open(f"{os.path.dirname(data.__file__)}/{seq}/seg/{fn.replace('.jpg', '.png')}"))).astype(np.float32)
         seg = torch.tensor(seg).float().cuda()
         seg_col = torch.stack((seg, torch.zeros_like(seg), 1 - seg))
+
         dataset.append({'cam': cam, 'im': im, 'seg': seg_col, 'id': c})
     return dataset
 
@@ -168,41 +168,45 @@ def initialize_params(seq, md):
         seq: name of the data sequence, e.g. "basketball"
         md: metadata
     """
-    # Random initialisation of pointcloud
-    init_pt_cld = np.random.random((10000, 3)) * 2.6 - 1.3
-    shs_colors_dc = np.random.random((10000, 3)) / 255.0
-    seg = np.ones(10000)
 
-    # Initialisation of pointcloud based on COLMAP
-    # init_pt_cld = np.load(f"{os.path.dirname(data.__file__)}/{seq}/init_pt_cld.npz")["data"]
-    # seg = init_pt_cld[:, 6]   # segmented, e.g. [0, 0, 1, 1, 1 ..]
-    # rgb_colors = init_pt_cld[:, 3:6]   # colours
+    colmap_pt_cld = f"{os.path.dirname(data.__file__)}/{seq}/init_pt_cld.npz"
+
+    if not os.path.exists(colmap_pt_cld):
+        # Random initialisation of pointcloud
+        init_pt_cld = np.random.random((100000, 3)) * 2.6 - 1.3
+        shs_colors_dc = np.random.random((100000, 3)) / 255.0
+        seg = np.ones(100000)
+    else:
+        # Initialisation of pointcloud based on COLMAP
+        init_pt_cld = np.load(f"{os.path.dirname(data.__file__)}/{seq}/init_pt_cld.npz")["data"]
+        seg = init_pt_cld[:, 6]   # segmented, e.g. [0, 0, 1, 1, 1 ..]
+        shs_colors_dc = init_pt_cld[:, 3:6] / 255.   # colours
+
     # initialise SH
     shs_degree = 3
     shs_num_coeffs = (shs_degree + 1) ** 2
-    shs_rest = np.zeros((init_pt_cld.shape[0], shs_num_coeffs - 1, 3))  # assuming max degree = 3
+    shs_rest = np.zeros((init_pt_cld.shape[0], shs_num_coeffs - 1, 3)) 
 
-    max_cams = 200
     dist, _ = scipy_knn(init_pt_cld[:, :3], 3)   # return sq_sit of 3 closest points
     sq_dist = (dist**2)
     mean3_sq_dist = sq_dist.mean(-1).clip(min=0.0000001, max=1)
     # depth 0 for depth gaussians
     depth = torch.zeros(size=(init_pt_cld.shape[0],)).cuda().float()
+
     # params are updated with gradient descent
     params = {
         'means3D': init_pt_cld[:, :3],    # (num_gaussians, 3)
         #'rgb_colors': init_pt_cld[:, 3:6],    # (num_gaussians, 3)
         'seg_colors': np.stack((seg, np.zeros_like(seg), 1 - seg), -1),
         'unnorm_rotations': np.tile([1, 0, 0, 0], (seg.shape[0], 1)),
-        'logit_opacities': inverse_sigmoid(0.1 * torch.ones((seg.shape[0], 1), dtype=torch.float, device="cuda")),
+        'logit_opacities': np.array(inverse_sigmoid(0.1 * torch.ones((seg.shape[0], 1), dtype=torch.float))),
         'log_scales': np.tile(np.log(np.sqrt(mean3_sq_dist))[..., None], (1, 3)),
-        'cam_m': np.zeros((max_cams, 3)),
-        'cam_c': np.zeros((max_cams, 3)),
-        'shs_dc': np.expand_dims(shs_colors_dc, 1),
-        'shs_rest': shs_rest
+        'shs_dc': np.expand_dims(shs_colors_dc, 1),  # (num_gaussians, 1, 3)
+        'shs_rest': shs_rest                         # (num_gaussians, shs_num_coeffs-1, 3)
     }
     params = {k: torch.nn.Parameter(torch.tensor(v).cuda().float().contiguous().requires_grad_(True)) for k, v in
               params.items()}
+    
     cam_centers = np.linalg.inv(md['w2c'][0])[:, :3, 3]  # Get scene radius
     scene_radius = 1.1 * np.max(np.linalg.norm(cam_centers - np.mean(cam_centers, 0)[None], axis=-1))
     # variables are NOT updated with gradient descent
@@ -220,10 +224,8 @@ def get_depth_gaussians(params, variables):
     """
     params_depth = {}
     for key in params.keys():
-        if key not in ['cam_m', 'cam_c']:
-            params_depth[key] = params[key][variables['depth'] == 1]
-        else:
-            params_depth[key] = params[key]
+        params_depth[key] = params[key][variables['depth'] == 1]
+
     return params_depth
 
 
@@ -235,8 +237,6 @@ def initialize_optimizer(params, variables, configs):
         'unnorm_rotations': 0.001,
         'logit_opacities': 0.05,
         'log_scales': 0.005,
-        'cam_m': 1e-4,
-        'cam_c': 1e-4,
         'shs_dc': 0.0025,
         'shs_rest': 0.000125
     }
@@ -265,7 +265,7 @@ def get_loss(
     rendervar = params2rendervar(params)
     rendervar['means2D'].retain_grad()
 
-    im, radius, depth, alpha = Renderer(raster_settings=curr_data['cam'],train=True)(**rendervar)
+    im, radius, depth = Renderer(raster_settings=curr_data['cam'])(**rendervar)
 
     curr_id = curr_data['id']
     losses['im'] = 0.8 * l1_loss_v1(im, curr_data['im']) + 0.2 * (1.0 - calc_ssim(im, curr_data['im']))
@@ -294,7 +294,7 @@ def get_loss(
 
     if depth_smoothness == True and i>5000:
         losses['depth_smoothness'] = utils_gaussian.edge_aware_smoothness_per_pixel(
-            curr_data['im'].unsqueeze(0), depth.unsqueeze(0).clip(0,10), i, alpha
+            curr_data['im'].unsqueeze(0), depth.unsqueeze(0).clip(0,10), i
         )
 
     if alpha_zero_one == True:
@@ -346,36 +346,11 @@ def initialize_per_timestep(params, variables, optimizer):
     return params, variables
 
 
-def initialize_post_first_timestep(params, variables, optimizer, num_knn=20):
-    is_fg = params['seg_colors'][:, 0] > 0.5
-    init_fg_pts = params['means3D'][is_fg]
-    init_bg_pts = params['means3D'][~is_fg]
-    init_bg_rot = torch.nn.functional.normalize(params['unnorm_rotations'][~is_fg])
-    # neighbor_sq_dist, neighbor_indices = o3d_knn(init_fg_pts.detach().cpu().numpy(), num_knn)
-    neighbor_dist, neighbor_indices = scipy_knn(init_fg_pts.detach().cpu().numpy(), num_knn)
-    neighbor_sq_dist = neighbor_dist**2
-    neighbor_weight = np.exp(-2000 * neighbor_sq_dist)
-    neighbor_dist = np.sqrt(neighbor_sq_dist)
-    variables["neighbor_indices"] = torch.tensor(neighbor_indices).cuda().long().contiguous()
-    variables["neighbor_weight"] = torch.tensor(neighbor_weight).cuda().float().contiguous()
-    variables["neighbor_dist"] = torch.tensor(neighbor_dist).cuda().float().contiguous()
-
-    variables["init_bg_pts"] = init_bg_pts.detach()
-    variables["init_bg_rot"] = init_bg_rot.detach()
-    variables["prev_pts"] = params['means3D'].detach()
-    variables["prev_rot"] = torch.nn.functional.normalize(params['unnorm_rotations']).detach()
-    params_to_fix = ['logit_opacities', 'log_scales', 'cam_m', 'cam_c']
-    for param_group in optimizer.param_groups:
-        if param_group["name"] in params_to_fix:
-            param_group['lr'] = 0.0
-    return variables
-
-
 def report_progress(params, data, i, progress_bar, variables, every_i=100):
     if i % every_i == 0:
-        im, _, _, _ = Renderer(raster_settings=data['cam'],train=True)(**params2rendervar(params))
+        im, _, _ = Renderer(raster_settings=data['cam'])(**params2rendervar(params))
         curr_id = data['id']
-        psnr = calc_psnr(im, data['im']).mean()
+        psnr = calc_psnr(torch.clamp((im), 0, 1), data['im']).mean()
         
         progress_bar.set_postfix({"train img 0 PSNR": f"{psnr:.{7}f}",
                                   "G": variables['depth'].shape[0],
@@ -409,7 +384,7 @@ def main(configs):#seq, exp, output_seq, args):
         configs['exp_name'],
         configs['output_seq']
     )
-    if os.path.exists(os.path.dirname(output_dir)):
+    if os.path.exists(output_dir):
         print(f'Output folder {configs["exp_name"]}/{configs["output_seq"]} already exists. Exiting.')
         return
     
@@ -531,33 +506,7 @@ def main(configs):#seq, exp, output_seq, args):
                 if is_initial_timestep:
                     params, variables = densify(params, variables, optimizer, i, configs['explicit_depth'], configs['iterations_densify'])
                 optimizer.step()
-                optimizer.zero_grad(set_to_none=True)
-
-                # TEMPORARY EVALUATION ##############################################################################
-                if (i+1) % 1000 == 0 and configs['eval_intermediate']: 
-                    intermediate_params = [params2cpu(params, is_initial_timestep)]
-                    save_config(configs)
-                    save_params(intermediate_params, configs['output_seq'], configs['exp_name'])
-                    save_variables(variables, configs['output_seq'], configs['exp_name'])
-                    save_eval_helper(configs['input_seq'], configs['output_seq'], configs['exp_name'])
-                    
-                    evaluator = Evaluator(
-                        configs['dataset'],
-                        configs['exp_name'],
-                        configs['output_seq'],
-                        configs['save_eval_data']
-                    )
-                    rgb_pred_npy, depth_pred_npy, pc_pred_npy = extract_output_data.extract_output_data(
-                        evaluator.input_seq, evaluator.exp_name, evaluator.output_seq
-                    ) 
-                    ssim_rgb, psnr_rgb = evaluator.evaluate_rgb(rgb_pred_npy)
-                    metrics = {
-                        'ssim_rgb': ssim_rgb,
-                        'psnr_rgb': psnr_rgb                        
-                    }
-                    with open(os.path.join(evaluator.experiment_dir, "eval", f"metrics_{i}.json"), 'w') as file:
-                        json.dump(metrics, file, indent=4)
-                    # TEMPORARY EVALUATION ##############################################################################
+                optimizer.zero_grad()
 
         progress_bar.close()
         output_params.append(params2cpu(params, is_initial_timestep))

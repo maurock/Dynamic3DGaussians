@@ -140,7 +140,7 @@ def extract_output_data(input_seq, exp_name, output_seq, near=0.1, far=100000.0)
     w2c, k = camera_positions[camera_index[0]]
 
     # im, depth = render(w2c, k, scene_data[0])
-    im, depth, alpha = helpers.render(w, h, k, w2c, near, far, scene_data[0])
+    im, depth = helpers.render(w, h, k, w2c, near, far, scene_data[0])
     init_pts = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
 
     view_k = k * view_scale
@@ -161,7 +161,7 @@ def extract_output_data(input_seq, exp_name, output_seq, near=0.1, far=100000.0)
         w2c, k = camera_positions[i]
 
         # im, depth = render(w2c, k, scene_data[0])
-        im, depth, alpha = helpers.render(w, h, k, w2c, near, far, scene_data[0])
+        im, depth = helpers.render(w, h, k, w2c, near, far, scene_data[0])
         pts = rgbd2pcd(im, depth, w2c, k, show_depth=(mode[0] == 'depth'))
 
         # Filter pointcloud: reduce the number of points
