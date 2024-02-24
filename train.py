@@ -376,6 +376,9 @@ def update_lr_means3D(optimizer, i, scene_radius, iterations):
 
 def main(configs):#seq, exp, output_seq, args):
 
+    # Print config
+    print(configs)
+
     output_dir = os.path.join(
         os.path.dirname(output.__file__),
         configs['exp_name'],
@@ -536,6 +539,6 @@ if __name__ == "__main__":
 
     s = time.time()
     for sequence in [configs['input_seq']]:
-        main(configs) # sequence, exp_name, output_seq, args)
+        main(configs)
         torch.cuda.empty_cache()
     print(f"Total time: {time.time() - s:.2f}s")
