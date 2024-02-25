@@ -34,7 +34,8 @@ def setup_camera(w, h, k, w2c, near=0.01, far=100):
         projmatrix=full_proj,
         sh_degree=3,
         campos=cam_center,
-        prefiltered=False
+        prefiltered=False,
+        debug=False
     )
     return cam
 
@@ -252,7 +253,7 @@ def create_dirs(dirs):
 def render(w, h, k, w2c, near, far, optimised_params,train=False):
     with torch.no_grad():
         cam = setup_camera(w, h, k, w2c, near, far)
-        im, radius, depth = Renderer(raster_settings=cam)(**optimised_params)
+        im, radius, depth, alpha = Renderer(raster_settings=cam,train=train)(**optimised_params)
         return im, depth
 
     

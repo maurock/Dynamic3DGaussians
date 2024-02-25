@@ -262,7 +262,7 @@ def get_loss(
     rendervar = params2rendervar(params)
     rendervar['means2D'].retain_grad()
 
-    im, radius, depth = Renderer(raster_settings=curr_data['cam'])(**rendervar)
+    im, radius, depth, alpha = Renderer(raster_settings=curr_data['cam'], train=True)(**rendervar)
 
     curr_id = curr_data['id']
     losses['im'] = 0.8 * l1_loss_v1(im, curr_data['im']) + 0.2 * (1.0 - calc_ssim(im, curr_data['im']))
@@ -345,7 +345,7 @@ def initialize_per_timestep(params, variables, optimizer):
 
 def report_progress(params, data, i, progress_bar, variables, every_i=100):
     if i % every_i == 0:
-        im, _, _ = Renderer(raster_settings=data['cam'])(**params2rendervar(params))
+        im, _, _, _ = Renderer(raster_settings=data['cam'], train=True)(**params2rendervar(params))
         curr_id = data['id']
         psnr = calc_psnr(torch.clamp((im), 0, 1), data['im']).mean()
         
@@ -377,7 +377,7 @@ def update_lr_means3D(optimizer, i, scene_radius, iterations):
 def main(configs):#seq, exp, output_seq, args):
 
     # Print config
-    print(configs)
+    print(configs, '\n')
 
     output_dir = os.path.join(
         os.path.dirname(output.__file__),
@@ -534,7 +534,17 @@ def main(configs):#seq, exp, output_seq, args):
 
 
 if __name__ == "__main__":
-    config_path = os.path.join(os.path.dirname(config.__file__), "train.yaml")
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-c', '--config_path', type=str, default=None, help='Name of the config file inside configs/')
+    args = parser.parse_args()
+
+    # Read config file: if no config file is specified, the train.yaml config file is used
+    if args.config_path is not None:
+        config_path = os.path.join(os.path.dirname(config.__file__), f"{args.config_path}.yaml")
+    else:
+        config_path = os.path.join(os.path.dirname(config.__file__), "train.yaml")
+    
+    print(f"\n[INFO] Using config file {config_path}\n")
     configs = read_config(config_path)
 
     s = time.time()
