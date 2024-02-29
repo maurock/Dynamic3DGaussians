@@ -231,3 +231,59 @@ def get_data_obj_dir(exp_name, output_seq):
     with open(eval_helper_path, "r") as f:
         input_seq = f.readline().strip()        
     return input_seq, os.path.join(os.path.dirname(data.__file__), input_seq)
+
+
+def ply_to_params(ply_data, baseline=None):
+    """
+    Convert ply to data according to the original 3DGS format.
+    
+    Arguments:
+        baseline: choose between none or "GaussianShader" 
+    """
+    # Initial setup
+    num_gaussians = ply_data['vertex']['x'].shape[0]
+    params_dict = {
+        'seg_colors': np.zeros((num_gaussians, 3)),
+        'cam_m': np.array([]),
+        'cam_c': np.array([]),
+        'means3D': np.stack((ply_data['vertex']['x'], ply_data['vertex']['y'], ply_data['vertex']['z']), axis=-1),
+        'logit_opacities': np.array(ply_data['vertex']['opacity'])[:, None],
+        'unnorm_rotations': np.stack((ply_data['vertex']['rot_0'], ply_data['vertex']['rot_1'], ply_data['vertex']['rot_2'], ply_data['vertex']['rot_3']), axis=-1),
+        'log_scales': np.stack((ply_data['vertex']['scale_0'], ply_data['vertex']['scale_1'], ply_data['vertex']['scale_2']), axis=-1),
+        'shs_dc': np.zeros((num_gaussians, 1, 3))
+    }
+
+    # shs
+    if baseline != "GaussianShader":
+        shs = np.array([]).reshape(num_gaussians, 0, 3)
+        for i in range(1, 16):
+
+            name1 = ply_data['vertex'].properties[6+(3*i)+0].name
+            name2 = ply_data['vertex'].properties[6+(3*i)+1].name
+            name3 = ply_data['vertex'].properties[6+(3*i)+2].name
+
+            values1 = ply_data['vertex'][name1]
+            values2 = ply_data['vertex'][name2]
+            values3 = ply_data['vertex'][name3]        
+
+            temp = np.array([values1, values2, values3]).transpose(1,0)
+            temp = np.expand_dims(temp, axis=1)
+
+            shs = np.concatenate((shs, temp), axis=1)
+
+        features_dc = np.zeros((num_gaussians, 3, 1))
+        features_dc[:, 0, 0] = np.asarray(ply_data.elements[0]["f_dc_0"])
+        features_dc[:, 1, 0] = np.asarray(ply_data.elements[0]["f_dc_1"])
+        features_dc[:, 2, 0] = np.asarray(ply_data.elements[0]["f_dc_2"])
+        params_dict['shs_dc'] = features_dc.transpose(0,2,1)
+
+        extra_f_names = [p.name for p in ply_data.elements[0].properties if p.name.startswith("f_rest_")]
+        extra_f_names = sorted(extra_f_names, key = lambda x: int(x.split('_')[-1]))
+        features_extra = np.zeros((num_gaussians, len(extra_f_names)))
+        for idx, attr_name in enumerate(extra_f_names):
+            features_extra[:, idx] = np.asarray(ply_data.elements[0][attr_name])
+        # Reshape (P,F*SH_coeffs) to (P, F, SH_coeffs except DC)
+        features_extra = features_extra.reshape((features_extra.shape[0], 3, (3 + 1) ** 2 - 1))
+        params_dict['shs_rest'] = features_extra.transpose(0,2,1)  
+
+    return params_dict

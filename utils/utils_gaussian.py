@@ -197,7 +197,7 @@ def calculate_transmittance(
         params,
         depth_pt_cld,
         variables,
-        max_NN=30
+        max_NN=10
     ):
     """Compute the transmittance of the gaussians as the product of 1 - opacity for all gaussians"""
 
@@ -219,14 +219,13 @@ def calculate_transmittance(
     opacities_reshaped = torch.sigmoid(logit_opacities).T # [1, N]
     t = 1 - w * opacities_reshaped # [M, N] x [1, N] = [M, N] 
 
+    dists = torch.norm(g_pts, dim=2) # [M, N]
+
     if t.shape[1] > max_NN:
 
-        _, top_indices = torch.topk(-t, max_NN, dim=1)
-        # mask = torch.zeros_like(t).cuda()
-        # mask.scatter_(1, top_indices, 1)
+        # _, top_indices = torch.topk(-t, max_NN, dim=1)
+        _, top_indices = torch.topk(dists, max_NN, dim=1, largest=False)
         
-        # t = t * mask # [M, N]
-
     t = torch.gather(t, 1, top_indices)
 
     # T = torch.prod(t, dim=1) # [M, 1]
