@@ -219,13 +219,13 @@ def calculate_transmittance(
     opacities_reshaped = torch.sigmoid(logit_opacities).T # [1, N]
     t = 1 - w * opacities_reshaped # [M, N] x [1, N] = [M, N] 
 
-    dists = torch.norm(g_pts, dim=2) # [M, N]
+    # dists = torch.norm(g_pts, dim=2) # [M, N]
 
     if t.shape[1] > max_NN:
 
-        # _, top_indices = torch.topk(-t, max_NN, dim=1)
-        _, top_indices = torch.topk(dists, max_NN, dim=1, largest=False)
-        
+        _, top_indices = torch.topk(-t, max_NN, dim=1)
+        # _, top_indices = torch.topk(dists, max_NN, dim=1, largest=False)
+
     t = torch.gather(t, 1, top_indices)
 
     # T = torch.prod(t, dim=1) # [M, 1]
