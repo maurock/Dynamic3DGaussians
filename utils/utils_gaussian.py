@@ -197,7 +197,7 @@ def calculate_transmittance(
         params,
         depth_pt_cld,
         variables,
-        max_NN=10
+        max_NN=30
     ):
     """Compute the transmittance of the gaussians as the product of 1 - opacity for all gaussians"""
 
@@ -324,13 +324,28 @@ def edge_aware_smoothness_per_pixel(img, pred, i):
     """
    
     def gradient_y(img):
-        gy = torch.cat([F.conv2d(img[:, i, :, :].unsqueeze(0),torch.Tensor([[2, 2, 4, 2, 2], [1, 1, 2, 1, 1], [0, 0, 0, 0, 0], [-1, -1, -2, -1, -1], [-2, -2, -4, -2, -2]]).cuda().view((1, 1, 5, 5)), padding=2) for i in range(img.shape[1])], 1)
+        gy = torch.cat([
+            F.conv2d(img[:, i, :, :].unsqueeze(0),
+                     torch.Tensor([ [ 2,  2,  4,  2,  2],
+                                    [ 1,  1,  2,  1,  1],
+                                    [ 0,  0,  0,  0,  0],
+                                    [-1, -1, -2, -1, -1],
+                                    [-2, -2, -4, -2, -2]]).cuda().view((1, 1, 5, 5)), 
+                        padding=2
+                    ) for i in range(img.shape[1])], 1)
         # gy = torch.cat( [F.conv2d(img[:, i, :, :].unsqueeze(0), torch.Tensor([[1, 2, 1], [0, 0, 0], [-1, -2, -1]]).cuda().view((1, 1, 3, 3)), padding=1) for i in range(img.shape[1])], 1)
 
         return gy
 
     def gradient_x(img):
-        gx = torch.cat( [F.conv2d(img[:, i, :, :].unsqueeze(0), torch.Tensor([[2, 1, 0, -1, -2], [2, 1, 0, -1, -2], [4, 2, 0, -2, -4], [2, 1, 0, -1, -2], [2, 1, 0, -1, -2]]).cuda().view((1, 1, 5, 5)), padding=2) for i in range(img.shape[1])], 1)
+        gx = torch.cat( 
+            [F.conv2d(img[:, i, :, :].unsqueeze(0), 
+                      torch.Tensor([    [2, 1, 0, -1, -2],
+                                        [2, 1, 0, -1, -2],
+                                        [4, 2, 0, -2, -4],
+                                        [2, 1, 0, -1, -2],
+                                        [2, 1, 0, -1, -2]]).cuda().view((1, 1, 5, 5)),
+                         padding=2) for i in range(img.shape[1])], 1)
         # gx = torch.cat( [F.conv2d(img[:, i, :, :].unsqueeze(0), torch.Tensor([[1, 0, -1], [2, 0, -2], [1, 0, -1]]).cuda().view((1, 1, 3, 3)), padding=1) for i in range(img.shape[1])], 1)
 
         return gx

@@ -179,7 +179,7 @@ def initialize_params(seq, md):
         seg = init_pt_cld[:, 6]   # segmented, e.g. [0, 0, 1, 1, 1 ..]
         shs_colors_dc = init_pt_cld[:, 3:6] / 255.   # colours
 
-    # initialise SH
+    # initialise SH, TODO: pass it as argument
     shs_degree = 3
     shs_num_coeffs = (shs_degree + 1) ** 2
     shs_rest = np.zeros((init_pt_cld.shape[0], shs_num_coeffs - 1, 3)) 
@@ -456,7 +456,8 @@ def main(configs):#seq, exp, output_seq, args):
                 transmittance_mean = utils_gaussian.calculate_transmittance(
                     params,
                     depth_pt_cld,
-                    variables
+                    variables,
+                    configs['max_NN']
                 )
 
             if configs['grad_transmittance']:

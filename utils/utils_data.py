@@ -66,7 +66,7 @@ def filter_pointcloud(pts, w2c, ratio_pointcloud):
     return pts
 
 
-def load_meta_file(data_dir, flag):
+def load_meta_file(data_dir, partition):
     """Load the meta file from the specified directory.
     Parameters:
         data_dir (str): Absolute path to the object data directory, e.g. <path_to_data>/toaster
@@ -74,12 +74,12 @@ def load_meta_file(data_dir, flag):
     Return:
         meta (dict): Dictionary containing the meta data
     """
-    if flag == 'train':
+    if partition == 'train':
         file_name = 'train_meta.json'
-    elif flag == 'test':
+    elif partition == 'test':
         file_name = 'test_meta.json'
     else:
-        raise ValueError(f"Invalid flag: {flag}. Choose between 'train' and 'test'.")
+        raise ValueError(f"Invalid partition: {partition}. Choose between 'train' and 'test'.")
     meta_path = os.path.join(data_dir, file_name)
     with open(meta_path, 'r') as file:
         meta = json.load(file)

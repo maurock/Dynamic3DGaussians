@@ -23,7 +23,7 @@ def load_mesh(filename):
 
 def get_random_directions(n_dirs):
     '''Get random directions on the unit sphere'''
-    theta = np.random.uniform(0, np.pi, size=(n_dirs, 1))  # Polar angle between 0 and π radians
+    theta = np.random.uniform(0, 2 * np.pi / 3, size=(n_dirs, 1))  # Polar angle between 0 and π radians
     phi = np.random.uniform(0, 2 * np.pi, size=(n_dirs, 1))  # Azimuthal angle between 0 and 2π radians
     x = np.sin(theta) * np.cos(phi)
     y = np.sin(theta) * np.sin(phi)
@@ -110,8 +110,10 @@ def main(args):
 
     if args.dataset == 'ShinyBlender':
         dataset_dir = 'shiny-blender-3DGS'
+        pc_num = 10000
     elif args.dataset == 'GlossySynthetic':
         dataset_dir = 'glossy-synthetic-3DGS'
+        pc_num = 20000
     else:
         raise ValueError(f"Invalid dataset: {args.dataset}. Choose between 'ShinyBlender' and 'GlossySynthetic'.")
 
@@ -121,10 +123,15 @@ def main(args):
         
         # Load mesh
         mesh = load_mesh(obj)
+
+        if dataset_dir == 'glossy-synthetic-3DGS':
+            # rotate object by -90 degrees around x-axis
+            mesh.apply_transform(trimesh.transformations.rotation_matrix(np.pi/2, [1, 0, 0]))
+
         center = mesh.centroid
         
         # Points on the object surface
-        pc = np.array(trimesh.sample.sample_surface_even(mesh, 10000)[0])
+        pc = np.array(trimesh.sample.sample_surface_even(mesh, pc_num)[0])
         
         # Get all intersections
         for num_touches in range(1, args.max_num_touches):
@@ -148,7 +155,13 @@ def main(args):
             depths_list.append(depth_points)
 
             # Plot
-            #debug_plot(pc, unique_intersections, depth_points)
+            # debug_plot(pc, unique_intersections, depth_points)
+
+        if dataset_dir == 'glossy-synthetic-3DGS':
+            # rotate object by 90 degrees around x-axis
+            Rx = trimesh.transformations.rotation_matrix(-np.pi/2, [1, 0, 0])[:3, :3]
+            depths_list = Rx[None,...] @ np.array(depths_list).transpose(0,2,1)  # [1, 3, 3] @ [T, 3, P]
+            depths_list = depths_list.transpose(0,2,1)  # [T, P, 3]
 
         obj_name = os.path.basename(obj).replace('.obj', '')
         if obj_name == 'musclecar':    # Fix mismatch between refnerf and refnerf-blend
@@ -162,7 +175,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='', help="Dataset name: choose between 'ShinyBlender' or 'GlossySynthetic'")
-    parser.add_argument('--max_num_touches', type=int, default=100)
+    parser.add_argument('--max_num_touches', type=int, default=500)
     parser.add_argument('--num_points_per_intersection', type=int, default=50)
     args = parser.parse_args()
     
