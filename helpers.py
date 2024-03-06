@@ -58,6 +58,24 @@ def params2rendervar(params):
     }
     return rendervar
 
+def params_depth_2rendervar(params, variables):
+    """This converts the parameters to variables necessary for rendering.
+    Specifically:
+    - rotations are normalised
+    - opacities are processed by a sigmoid to be between [0, 1]
+    - scales are converted from log_scales    
+    """
+    rendervar = {
+        'means3D': params['means3D'][variables['depth'] == 1],
+        #'colors_precomp': params['rgb_colors'],
+        'rotations': torch.nn.functional.normalize(params['unnorm_rotations'][variables['depth'] == 1]),
+        'opacities': torch.sigmoid(params['logit_opacities'][variables['depth'] == 1]),
+        'scales': torch.exp(params['log_scales'][variables['depth'] == 1]),   # maybe because some gaussians are very big and some very small? 
+        'means2D': torch.zeros_like(params['means3D'][variables['depth'] == 1], requires_grad=True, device="cuda") + 0,
+        'shs': torch.cat((params['shs_dc'][variables['depth'] == 1], params['shs_rest'][variables['depth'] == 1]), dim=1)
+    }
+    return rendervar
+
 
 def l1_loss_v1(x, y):
     return torch.abs((x - y)).mean()

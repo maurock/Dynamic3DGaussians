@@ -10,6 +10,7 @@ import numpy as np
 import trimesh
 import collections
 import output
+import pickle
 
 def generate_seg_images(output_root_dir, rgb_folder, num_cam, img_name):
     """Generate black images PNG as everything is static currently. Images have the same size as the original images.
@@ -220,6 +221,8 @@ def get_dataset_dir(dataset):
         return 'shiny-blender-3DGS'
     elif dataset == 'GlossySynthetic':
         return 'glossy-synthetic-3DGS'
+    elif dataset == 'Real':
+        return 'real'
     else:
         raise ValueError(f"Invalid dataset: {dataset}. Choose between 'ShinyBlender', 'GlossySynthetic'.")
     
@@ -287,3 +290,7 @@ def ply_to_params(ply_data, baseline=None):
         params_dict['shs_rest'] = features_extra.transpose(0,2,1)  
 
     return params_dict
+
+def read_pickle(pkl_path):
+    with open(pkl_path, 'rb') as f:
+        return pickle.load(f)

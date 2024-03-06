@@ -20,6 +20,7 @@ import config
 import data
 from eval import Evaluator
 import output
+import plotly.graph_objects as go
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 # torch.autograd.set_detect_anomaly(True)
 
@@ -144,9 +145,11 @@ def get_dataset(t, md, configs):
         rgb_path = f"{os.path.dirname(data.__file__)}/{seq}/ims/{fn}"
         im = utils_data.load_single_rgb_gt(rgb_path, bg=bg).permute(2, 0, 1)
 
-        seg = np.array(copy.deepcopy(Image.open(f"{os.path.dirname(data.__file__)}/{seq}/seg/{fn.replace('.jpg', '.png')}"))).astype(np.float32)
-        seg = torch.tensor(seg).float().cuda()
-        seg_col = torch.stack((seg, torch.zeros_like(seg), 1 - seg))
+        # seg = np.array(copy.deepcopy(Image.open(f"{os.path.dirname(data.__file__)}/{seq}/seg/{fn.replace('.jpg', '.png')}"))).astype(np.float32)
+        # seg = torch.tensor(seg).float().cuda()
+        # seg_col = torch.stack((seg, torch.zeros_like(seg), 1 - seg))
+        seg_col = torch.stack((im, torch.zeros_like(im), 1 - im))
+
 
         dataset.append({'cam': cam, 'im': im, 'seg': seg_col, 'id': c})
     return dataset
@@ -248,6 +251,8 @@ def get_loss(
         variables, 
         is_initial_timestep, 
         configs,
+        md,
+        data_proximity,
         explicit_depth=False, 
         depth_pt_cld=None, 
         grad_depth=None,
@@ -289,10 +294,62 @@ def get_loss(
     if finite_element_transmittance is not None:
         losses['finite_element_transmittance'] = -finite_element_transmittance
 
-    if depth_smoothness == True and i>5000:
-        losses['depth_smoothness'] = utils_gaussian.edge_aware_smoothness_per_pixel(
-            curr_data['im'].unsqueeze(0), depth.unsqueeze(0).clip(0,10), i
-        )
+    if depth_smoothness == True:
+        if i < 20000:
+            losses['depth_smoothness'] = 0.0
+        else:
+            if configs['proximity_mask'] == True:
+                with torch.no_grad():
+                    proximity_mask = utils_gaussian.create_visibility_filtered_proximity_mask(
+                        depth[0], md, data_proximity,  curr_data['id'], depth_threshold=0.1
+                    )
+            else:
+                proximity_mask = 1
+
+            losses['depth_smoothness'] = utils_gaussian.edge_aware_smoothness_per_pixel(
+                curr_data['im'].unsqueeze(0), depth.unsqueeze(0).clip(0,10), proximity_mask
+            )
+
+
+
+    # if depth_smoothness == True:
+    #     if i < 500:
+    #         losses['depth_smoothness'] = 0.0
+    #     else:
+
+    #         if i == 2000:
+    #             w2c = curr_data['cam'][6]
+    #             path = os.path.join(os.path.dirname(data.__file__), configs['input_seq'], 'train_meta.json')
+    #             with open(path, 'r') as file:
+    #                 cameras = json.load(file)
+    #             k = np.array(cameras["k"])[0, curr_data['id'], :, :]
+    #             w2c = np.array(cameras["w2c"])[0, curr_data['id'], :, :]
+
+    #             pts = extract_output_data.rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None)
+
+    #             depth_pt_cld = np.load(f"{os.path.dirname(data.__file__)}/{configs['input_seq']}/depth_pt_cld.npz")['depth_points']
+    #             depth_pt_cld = torch.tensor(depth_pt_cld).cuda().float()
+    #             depth_pt_cld = depth_pt_cld[:configs['num_touches']].reshape(-1, 3)
+
+                
+    #             fig = go.Figure(
+    #             [
+    #                 go.Scatter3d(x=pts[:, 0].detach().cpu(),
+    #                 y=pts[:, 1].detach().cpu(),
+    #                 z=pts[:, 2].detach().cpu(), mode='markers',
+    #                 marker=dict(size=2)),
+
+    #                 go.Scatter3d(x=depth_pt_cld[:, 0].detach().cpu(),
+    #                 y=depth_pt_cld[:, 1].detach().cpu(),
+    #                 z=depth_pt_cld[:, 2].detach().cpu(), mode='markers',
+    #                 marker=dict(size=2))
+    #                 ]
+    #             )
+    #             fig.show()
+
+    #         losses['depth_smoothness'] = utils_gaussian.edge_aware_smoothness_per_pixel(
+    #             curr_data['im'].unsqueeze(0), depth.unsqueeze(0).clip(0,10), i
+    #         )
 
     if alpha_zero_one == True:
         losses['alpha_zero_one'] = utils_gaussian.alpha_zero_one(alpha)
@@ -400,13 +457,16 @@ def main(configs):#seq, exp, output_seq, args):
     transmittance_mean = None
     grad_transmittance = None
     finite_element_transmittance = None
-    if configs['explicit_depth'] or configs['density'] or configs['grad_depth'] or configs['transmittance'] or configs['grad_transmittance'] or configs['finite_element_transmittance']:
+    data_proximity= None
+    if configs['explicit_depth'] or configs['density'] or configs['grad_depth'] or configs['transmittance'] or configs['grad_transmittance'] or configs['finite_element_transmittance'] or configs['depth_smoothness'] or configs['depth_smoothness']:
         params_depth_init, variables_depth_init, depth_pt_cld = initialise_depth_gaussians(
             configs['input_seq'], md, configs['num_touches'], configs['random_selection'], configs['dataset']
         )
 
         # Combine params and variables for normal and depth gaussians
         params, variables = combine_params_and_variables(params, params_depth_init, variables, variables_depth_init)
+
+        data_proximity = utils_gaussian.precompute_values_for_proximity(md, depth_pt_cld)
 
     grad_depth = None
     density_mean = None
@@ -417,6 +477,7 @@ def main(configs):#seq, exp, output_seq, args):
 
     optimizer = initialize_optimizer(params, variables, configs)
     output_params = []
+
 
     for t in range(num_timesteps):    
         dataset = get_dataset(t, md, configs)
@@ -491,6 +552,8 @@ def main(configs):#seq, exp, output_seq, args):
                 variables,
                 is_initial_timestep,
                 configs,
+                md,
+                data_proximity,
                 depth_pt_cld=depth_pt_cld,
                 grad_depth=grad_depth,
                 density_mean=density_mean,
@@ -500,6 +563,32 @@ def main(configs):#seq, exp, output_seq, args):
                 depth_smoothness=configs['depth_smoothness'],
                 alpha_zero_one=configs['alpha_zero_one']
             )
+
+            # TEMP: ANALYSE DEPTH GAUSSIANS
+            # if i >10000:
+            #     save_config(configs)
+            #     output_params.append(params2cpu(params, is_initial_timestep))
+            #     save_params(output_params, configs['output_seq'], configs['exp_name'])
+            #     save_variables(variables, configs['output_seq'], configs['exp_name'])
+            #     save_eval_helper(configs['input_seq'], configs['output_seq'], configs['exp_name'])
+            #     exit()
+            # if loss.item() < 0.001:
+                # rendervar = params2rendervar(params)
+                # im, radius, depth, alpha = Renderer(raster_settings=curr_data['cam'], train=True)(**rendervar)
+                # import matplotlib.pyplot as plt
+                # plt.imshow(im.permute(1,2,0).detach().cpu().numpy())
+                # plt.show()
+                # plt.imshow(depth.permute(1,2,0).detach().cpu().numpy())
+                # plt.show()
+                # save_config(configs)
+                # output_params.append(params2cpu(params, is_initial_timestep))
+                # save_params(output_params, configs['output_seq'], configs['exp_name'])
+                # save_variables(variables, configs['output_seq'], configs['exp_name'])
+                # save_eval_helper(configs['input_seq'], configs['output_seq'], configs['exp_name'])
+                # exit()
+         
+
+
             loss.backward()
 
             with torch.no_grad():

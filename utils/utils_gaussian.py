@@ -3,6 +3,7 @@ Code is adapted from https://github.com/dreamgaussian/dreamgaussian"""
 import torch
 from external import build_rotation
 import torch.nn.functional as F
+import numpy as np
 
 def gaussian_3d_coeff(xyzs, covs):
     """Compute Gaussians exponent"""
@@ -219,17 +220,22 @@ def calculate_transmittance(
     opacities_reshaped = torch.sigmoid(logit_opacities).T # [1, N]
     t = 1 - w * opacities_reshaped # [M, N] x [1, N] = [M, N] 
 
-    # dists = torch.norm(g_pts, dim=2) # [M, N]
+    #####################
+    dists = torch.norm(g_pts, dim=2) # [M, N]
+    mask = dists > 0.1
+
+    w_close = w.clone()
+    w_close[mask] = 0 
 
     if t.shape[1] > max_NN:
 
-        _, top_indices = torch.topk(-t, max_NN, dim=1)
+        # _, top_indices = torch.topk(-t, max_NN, dim=1)
+        # _, top_indices = torch.topk(-t_close, max_NN, dim=1)
         # _, top_indices = torch.topk(dists, max_NN, dim=1, largest=False)
+        _, top_indices = torch.topk(w_close, max_NN, dim=1)
 
-    t = torch.gather(t, 1, top_indices)
-
-    # T = torch.prod(t, dim=1) # [M, 1]
-    # T_mean = T.mean()
+        t = torch.gather(t, 1, top_indices)
+    #####################33
 
     T_mean = t.mean()
     
@@ -311,7 +317,7 @@ def alpha_zero_one(alpha, eps=torch.tensor([1e-3]).cuda()):
 
 
 # Code adapted from https://github.com/brownvc/diffdiffdepth/blob/main/loss.py
-def edge_aware_smoothness_per_pixel(img, pred, i):
+def edge_aware_smoothness_per_pixel(img, pred, proximity_mask):
     """ A measure of how closely the gradients of a predicted disparity/depth map match the 
     gradients of the RGB image. 
 
@@ -367,7 +373,7 @@ def edge_aware_smoothness_per_pixel(img, pred, i):
         mask[:border_size, :] = 0  # Top border
         mask[-border_size:, :] = 0  # Bottom border
         return mask
-    
+        
     # Prefiltering depth by multiplying it with alpha values
     pred_gradients_x = gradient_x(pred).clip(-5, 5)
     pred_gradients_y = gradient_y(pred).clip(-5, 5)
@@ -382,7 +388,77 @@ def edge_aware_smoothness_per_pixel(img, pred, i):
     weights_x = torch.exp(-torch.mean(torch.abs(image_gradients_x), 1, keepdim=True))
     weights_y = torch.exp(-torch.mean(torch.abs(image_gradients_y), 1, keepdim=True))
        
-    smoothness_x = torch.abs(pred_gradients_x) * weights_x
-    smoothness_y = torch.abs(pred_gradients_y) * weights_y
+    smoothness_x = (torch.abs(pred_gradients_x) * weights_x) * proximity_mask
+    smoothness_y = (torch.abs(pred_gradients_y) * weights_y) * proximity_mask
 
     return torch.mean(smoothness_x) + torch.mean(smoothness_y)
+
+
+def create_visibility_filtered_proximity_mask(depth_map, md, data_proximity, idx, depth_threshold, proximity_threshold=30, batch_size=50):
+    """
+    Create a mask with smooth decay based on proximity to visible known points,
+    considering depth to filter out obstructed points. 
+    
+    Args:
+        depth_map: depth, torch.tensor(800, 800)
+        points_2d: projected touch points from 3D world frame to 2D image space
+        points_depth: depth of predicted touch points in camera space
+        depth_threshold: threshold for computing only visible points    
+    Returns:
+        mask: shape (H, W)
+    """
+    h, w = md['h'], md['w']
+    mask = torch.zeros((h, w), dtype=torch.bool, device=depth_map.device)
+    points_2d = data_proximity['points_2d'][idx]
+    points_depth = data_proximity['P_cam'][idx]
+    # Grid of coordinates
+    Y, X = data_proximity['Y'], data_proximity['X']
+    for i in range(0, points_2d.shape[0], batch_size):
+        end = i + batch_size
+        points_x_batch = points_2d[i:end, 0].unsqueeze(-1).unsqueeze(-1)
+        points_y_batch = points_2d[i:end, 1].unsqueeze(-1).unsqueeze(-1)
+        points_depth_batch = points_depth[i:end].unsqueeze(-1).unsqueeze(-1)
+
+        # Calculate distances from each grid point to each point in the batch
+        dist_batch = torch.sqrt((X - points_x_batch) ** 2 + (Y - points_y_batch) ** 2)
+
+        # Check visibility based on depth difference threshold
+        depth_at_points_batch = depth_map[points_2d[i:end, 1], points_2d[i:end, 0]]
+        visible_batch = torch.abs(depth_at_points_batch - points_depth_batch.squeeze()) < depth_threshold
+
+        # Apply proximity threshold to consider only visible points
+        within_proximity_batch = dist_batch <= proximity_threshold
+
+        # Combine visibility and proximity, update the mask
+        combined_mask_batch = (visible_batch.unsqueeze(-1).unsqueeze(-1) & within_proximity_batch).any(dim=0)
+        mask = mask | combined_mask_batch  # Use boolean mask directly
+
+    # Convert mask to float if necessary for further processing
+    return 1 - mask.float()
+
+
+def precompute_values_for_proximity(md, depth_pt_cld):
+    num_cameras = np.array(md['k']).shape[1]
+    
+    data_proximity  = {'k': [], 'w2c': [], 'points_2d': [], 'P_cam': []}
+    for idx in range(num_cameras):
+        depth_points_hom = torch.cat((depth_pt_cld, torch.ones((depth_pt_cld.shape[0], 1)).cuda()), axis=1)
+        k = np.array(md['k'])[0, idx, :, :]
+        w2c = np.array(md['w2c'])[0, idx, :, :]
+        P_cam = (np.array(w2c) @ np.array(depth_points_hom.cpu()).T).T 
+        P_im = (k @ P_cam[:, :3].T).T
+        points_2d = P_im[:, :2] / P_im[:, [2]]
+
+        data_proximity['k'].append(k.tolist())
+        data_proximity['w2c'].append(w2c.tolist())
+        data_proximity['points_2d'].append(points_2d.tolist())
+        data_proximity['P_cam'].append(P_cam[:, 2].tolist())
+
+    for k, v in data_proximity.items():
+        data_proximity[k] = torch.tensor(v, device='cuda').float()
+    data_proximity['points_2d'] = data_proximity['points_2d'].long()
+
+    data_proximity['Y'], data_proximity['X'] = torch.meshgrid(torch.arange(md['h'], device='cuda:0'), torch.arange(md['h'], device='cuda:0'), indexing='ij')
+
+    return data_proximity
+        
