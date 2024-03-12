@@ -38,13 +38,17 @@ def initialise_depth_gaussians(seq, md, num_touches, random_selection, dataset):
     except:
         print(f"Depth point cloud not found. Exiting.")
         exit()
-        
-    if random_selection:
-        # Sample random touches
-        indexes = np.random.choice(depth_pt_cld.shape[0], size=num_touches, replace=False)
-        depth_pt_cld = depth_pt_cld[indexes].reshape(-1, 3)
+
+    if depth_pt_cld.ndim == 2:
+        depth_pt_cld = depth_pt_cld.reshape(-1, 3)
+
     else:
-        depth_pt_cld = depth_pt_cld[:num_touches].reshape(-1, 3)
+        if random_selection:
+            # Sample random touches
+            indexes = np.random.choice(depth_pt_cld.shape[0], size=num_touches, replace=False)
+            depth_pt_cld = depth_pt_cld[indexes].reshape(-1, 3)
+        else:
+            depth_pt_cld = depth_pt_cld[:num_touches].reshape(-1, 3)
 
     # seg set to 1 for depth gaussians
     seg = np.ones(shape=(depth_pt_cld.shape[0])) # segmented, e.g. [0, 0, 1, 1, 1 ..]
