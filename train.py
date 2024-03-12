@@ -132,7 +132,7 @@ def get_dataset(t, md, configs):
     seq = configs['input_seq']
     ratio = configs['ratio_data']
 
-    data_indexes = utils_data.filter_dataset(len(md['fn'][t]), ratio)
+    data_indexes = utils_data.filter_dataset(md, ratio)
 
     for c in data_indexes:  # md['fn'][t] is a list of the image paths at time t, e.g. [0/a.jpg, 3/a.jpg, ..] 
                                        # meaning camera 0 -> image a.jpg, camera 3 -> image a.jpg, etc.
@@ -309,47 +309,6 @@ def get_loss(
             losses['depth_smoothness'] = utils_gaussian.edge_aware_smoothness_per_pixel(
                 curr_data['im'].unsqueeze(0), depth.unsqueeze(0).clip(0,10), proximity_mask
             )
-
-
-
-    # if depth_smoothness == True:
-    #     if i < 500:
-    #         losses['depth_smoothness'] = 0.0
-    #     else:
-
-    #         if i == 2000:
-    #             w2c = curr_data['cam'][6]
-    #             path = os.path.join(os.path.dirname(data.__file__), configs['input_seq'], 'train_meta.json')
-    #             with open(path, 'r') as file:
-    #                 cameras = json.load(file)
-    #             k = np.array(cameras["k"])[0, curr_data['id'], :, :]
-    #             w2c = np.array(cameras["w2c"])[0, curr_data['id'], :, :]
-
-    #             pts = extract_output_data.rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None)
-
-    #             depth_pt_cld = np.load(f"{os.path.dirname(data.__file__)}/{configs['input_seq']}/depth_pt_cld.npz")['depth_points']
-    #             depth_pt_cld = torch.tensor(depth_pt_cld).cuda().float()
-    #             depth_pt_cld = depth_pt_cld[:configs['num_touches']].reshape(-1, 3)
-
-                
-    #             fig = go.Figure(
-    #             [
-    #                 go.Scatter3d(x=pts[:, 0].detach().cpu(),
-    #                 y=pts[:, 1].detach().cpu(),
-    #                 z=pts[:, 2].detach().cpu(), mode='markers',
-    #                 marker=dict(size=2)),
-
-    #                 go.Scatter3d(x=depth_pt_cld[:, 0].detach().cpu(),
-    #                 y=depth_pt_cld[:, 1].detach().cpu(),
-    #                 z=depth_pt_cld[:, 2].detach().cpu(), mode='markers',
-    #                 marker=dict(size=2))
-    #                 ]
-    #             )
-    #             fig.show()
-
-    #         losses['depth_smoothness'] = utils_gaussian.edge_aware_smoothness_per_pixel(
-    #             curr_data['im'].unsqueeze(0), depth.unsqueeze(0).clip(0,10), i
-    #         )
 
     if alpha_zero_one == True:
         losses['alpha_zero_one'] = utils_gaussian.alpha_zero_one(alpha)

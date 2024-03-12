@@ -16,6 +16,38 @@ from pytorch3d.loss import chamfer_distance
 import plotly.graph_objects as go
 from utils.utils_metrics import earth_mover_distance
 
+
+class EvaluatorBase:
+    def __init__(self, dataset, exp_name, output_seq, save_eval_data) -> None:
+        # Parameters
+        self.dataset = dataset
+        self.exp_name = exp_name
+        self.output_seq = output_seq
+        self.save_eval_data = save_eval_data
+        
+        # Set paths
+        self.experiment_dir = self.get_experiment_dir()
+        self.input_seq, self.data_dir = self.get_data_obj_dir()
+
+    def get_experiment_dir(self):
+        pass
+
+    def get_data_obj_dir(self):
+        pass
+
+    def evaluate_rgb(self, rgb_pred_npy):
+        pass
+    
+    def evaluate_3D(self, pc_pred_npy):
+        pass
+    
+    def evaluate_depth(self, depth_pred_npy):
+        pass
+
+    def run_evaluation(self):
+        pass
+
+
 class Evaluator:
     def __init__(self, dataset, exp_name, output_seq, save_eval_data) -> None:
         # Parameters
@@ -36,9 +68,7 @@ class Evaluator:
             if self.save_eval_data:      
                 extract_output_data.save_output_pointcloud(pc_pred_npy, self.exp_name, self.output_seq)
                 extract_output_data.save_output_depth_images(depth_pred_npy, self.exp_name, self.output_seq)
-                extract_output_data.save_output_rgb_images(rgb_pred_npy, self.exp_name, self.output_seq)
-
-        
+                extract_output_data.save_output_rgb_images(rgb_pred_npy, self.exp_name, self.output_seq)        
        
     def _debug_depth(self, depth_paths):
         image = Image.open(depth_paths[0])
@@ -134,14 +164,23 @@ class Evaluator:
             pc_pred = torch.tensor(pc_pred_npy).float().cuda()
 
             # Focus on bounding box around the object (to remove floaters)
-            pc_pred = utils_data.get_points_in_bbox(pc_pred)
+            # pc_pred = utils_data.get_points_in_bbox(pc_pred)
 
             # Compute metrics
             cd = chamfer_distance(pc_gt.unsqueeze(0), pc_pred.unsqueeze(0))[0].item()
-            emd = earth_mover_distance(pc_gt[:5000].cpu(), pc_pred[:5000].cpu()).item()
+
+            print('CD: {cd}')
+
+            emd = 0
+            # emd_average = []
+            # for i in range(0, 5):
+            #     indexes = np.random.choice(len(pc_gt), 5000, replace=False)
+            #     emd = earth_mover_distance(pc_gt[indexes].cpu(), pc_pred[indexes].cpu()).item()
+            #     emd_average.append(emd)
+            # emd = np.mean(emd_average)
         torch.cuda.empty_cache()
 
-        return cd
+        return cd, emd
     
     def evaluate_depth(self, depth_pred_npy):
         with torch.no_grad():
@@ -185,7 +224,7 @@ class Evaluator:
         # TODO LPIPS
 
         # Compute 3D metrics
-        cd = self.evaluate_3D(pc_pred_npy)
+        cd, emd = self.evaluate_3D(pc_pred_npy)
 
         # Compute depth metrics
         # sim_depth, psnr_depth = self.evaluate_depth(depth_pred_npy)
@@ -195,7 +234,7 @@ class Evaluator:
             'ssim_rgb': ssim_rgb,
             'psnr_rgb': psnr_rgb,
             'cd': cd,
-            #'emd': emd,
+            'emd': emd,
             #'ssim_depth': ssim_depth,
             #'psnr_depth': psnr_depth
         }
@@ -206,6 +245,32 @@ class Evaluator:
         # Print metrics
         for k, v in metrics.items():
             print(f'{k}: {v}')
+
+
+class EvaluatorGaussianShader(EvaluatorBase):
+
+    def get_experiment_dir(self):
+        return os.path.join('/home/mauro/Documents/PhD/Code/GaussianShader/output', self.exp_name, self.output_seq)
+
+    def get_data_obj_dir(self):
+        dataset_dir = utils_data.get_dataset_dir(self.dataset)
+        return self.output_seq, os.path.join(os.path.dirname(data.__file__), dataset_dir, self.output_seq)
+    
+    def evaluate_3D(self, pc_pred_npy):
+        with torch.no_grad():
+            # Load ground truth and predicted pointclouds
+            pc_gt = utils_data.load_pointcloud_gt(self.data_dir)
+            pc_pred = torch.tensor(pc_pred_npy).float().cuda()
+
+            # Focus on bounding box around the object (to remove floaters)
+            pc_pred = utils_data.get_points_in_bbox(pc_pred)
+
+            # Compute metrics
+            cd = chamfer_distance(pc_gt.unsqueeze(0), pc_pred.unsqueeze(0))[0].item()
+        torch.cuda.empty_cache()
+
+        return cd
+
 
 def main(args):
     # Parameters

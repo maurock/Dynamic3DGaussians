@@ -202,7 +202,7 @@ def get_points_in_bbox(
     return points_in_bbox
 
 
-def filter_dataset(N, ratio):
+def filter_dataset(md, ratio):
     """Filter the dataset by sampling a subset of the data at constant intervals.
     Parameters:
         N (int): Number of data points
@@ -210,10 +210,14 @@ def filter_dataset(N, ratio):
     Return:
         final_indexes (list): Indexes of the data to keep
     """
+    ids = md['cam_id'][0]
+    ids = [int(i) for i in ids] # e.g. [0, 4,19, 2, 127, ..]
+    N = len(ids)
     step = int(1 / ratio)
-    final_indexes = np.arange(N * ratio) * step
-    final_indexes = [int(i) for i in final_indexes]
-    return final_indexes
+    indexes = np.arange(N * ratio) * step
+    indexes = [int(i) for i in indexes]
+    # final_indexes = np.array(ids)[indexes].tolist()
+    return indexes
 
 
 def get_dataset_dir(dataset):
