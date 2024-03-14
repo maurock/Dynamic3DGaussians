@@ -437,6 +437,41 @@ def create_visibility_filtered_proximity_mask(depth_map, md, data_proximity, idx
     return 1 - mask.float()
 
 
+def create_smooth_proximity_mask_decay_batched(depth_map, md, data_proximity, idx, depth_threshold, sigma=10, batch_size=5):
+    h, w = depth_map.shape
+    h, w = md['h'], md['w']
+    mask = torch.zeros((h, w), dtype=torch.float, device=depth_map.device)
+    points_2d = data_proximity['points_2d'][idx]
+    points_depth = data_proximity['P_cam'][idx]
+
+    Y, X = data_proximity['Y'], data_proximity['X']
+
+    # Process points in batches to reduce memory usage
+    for i in range(0, points_2d.shape[0], batch_size):
+        end = min(i + batch_size, points_2d.shape[0])
+        points_x_batch = points_2d[i:end, 0].unsqueeze(-1).unsqueeze(-1)
+        points_y_batch = points_2d[i:end, 1].unsqueeze(-1).unsqueeze(-1)
+        points_depth_batch = points_depth[i:end].unsqueeze(-1).unsqueeze(-1)
+
+        sq_dist_batch = (X - points_x_batch) ** 2 + (Y - points_y_batch) ** 2
+        gaussian_decay_batch = torch.exp(-sq_dist_batch / (sigma ** 2))
+
+        depth_at_points_batch = depth_map[points_2d[i:end, 1], points_2d[i:end, 0]]
+        visible_batch = torch.abs(depth_at_points_batch - points_depth_batch.squeeze()) < depth_threshold
+        
+        visible_gaussian_decay_batch = gaussian_decay_batch * visible_batch.unsqueeze(-1).unsqueeze(-1)
+        
+        mask += visible_gaussian_decay_batch.sum(dim=0)        
+    
+    mask = mask ** 0.5
+    
+    if mask.max() != 0:
+        mask = mask / mask.max()  # Normalize the mask to [0, 1] range
+    
+    mask = 1 - mask
+
+    return mask
+
 def precompute_values_for_proximity(md, depth_pt_cld):
     num_cameras = np.array(md['k']).shape[1]
     

@@ -299,16 +299,18 @@ def get_loss(
         losses['finite_element_transmittance'] = -finite_element_transmittance
 
     if depth_smoothness == True:
+        proximity_mask = 1
         if i < 20000:
             losses['depth_smoothness'] = 0.0
         else:
             if configs['proximity_mask'] == True:
                 with torch.no_grad():
-                    proximity_mask = utils_gaussian.create_visibility_filtered_proximity_mask(
-                        depth[0], md, data_proximity,  curr_data['id'], depth_threshold=0.1
+                    mask = utils_gaussian.create_smooth_proximity_mask_decay_batched(
+                        depth[0], md, data_proximity, curr_data['id'], depth_threshold=0.1, sigma=20, batch_size=100
                     )
-            else:
-                proximity_mask = 1
+                    # proximity_mask = utils_gaussian.create_visibility_filtered_proximity_mask(
+                    #     depth[0], md, data_proximity,  curr_data['id'], depth_threshold=0.1
+                    # )
 
             losses['depth_smoothness'] = utils_gaussian.edge_aware_smoothness_per_pixel(
                 curr_data['im'].unsqueeze(0), depth.unsqueeze(0).clip(0,10), proximity_mask
