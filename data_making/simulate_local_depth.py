@@ -23,11 +23,17 @@ def load_mesh(filename):
 
 def get_random_directions(n_dirs):
     '''Get random directions on the unit sphere'''
-    theta = np.random.uniform(0, 2 * np.pi / 3, size=(n_dirs, 1))  # Polar angle between 0 and π radians
+    # ShinyBlender
+    # theta = np.random.uniform(0, 2 * np.pi / 3, size=(n_dirs, 1))  # Polar angle between 0 and π radians
+    # phi = np.random.uniform(0, 2 * np.pi, size=(n_dirs, 1))  # Azimuthal angle between 0 and 2π radians
+
+    # GlossySynthetic
+    theta = np.random.uniform(0, np.pi, size=(n_dirs, 1))  # Polar angle between 0 and π radians
     phi = np.random.uniform(0, 2 * np.pi, size=(n_dirs, 1))  # Azimuthal angle between 0 and 2π radians
-    x = np.sin(theta) * np.cos(phi)
-    y = np.sin(theta) * np.sin(phi)
-    z = np.cos(theta)
+
+    x = 3 * np.sin(theta) * np.cos(phi)
+    y = 3 * np.sin(theta) * np.sin(phi)
+    z = 3 * np.cos(theta)
     directions = np.concatenate((x, y, z), axis=1)
     return directions
 
@@ -153,9 +159,6 @@ def main(args):
             # Get points closest to the intersections
             depth_points  = get_closest_points(pc, unique_intersections, args.num_points_per_intersection)
             depths_list.append(depth_points)
-
-            # Plot
-            # debug_plot(pc, unique_intersections, depth_points)
 
         if dataset_dir == 'glossy-synthetic-3DGS':
             # rotate object by 90 degrees around x-axis

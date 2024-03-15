@@ -3,8 +3,7 @@ import torch
 import numpy as np
 import open3d as o3d
 import time
-from diff_gaussian_rasterization import GaussianRasterizer as Renderer
-from helpers import setup_camera, quat_mult
+from helpers import quat_mult
 from external import build_rotation
 from colormap import colormap
 from copy import deepcopy
@@ -15,6 +14,8 @@ import matplotlib.cm as cm
 import output
 import helpers
 import matplotlib.pyplot as plt
+from utils import utils_gaussian
+import images
 
 """
 Visualiser. This method was modified from the original code for better interactivity.
@@ -38,8 +39,8 @@ REMOVE_BACKGROUND = False  # False or True
 FORCE_LOOP = False  # False or True
 # FORCE_LOOP = True  # False or True
 
-w, h = 800, 800 #640*2, 360*2 # Needs to be the same as W, H of the training images
-near, far = 0.00001, 10000.0
+w, h = 640, 480 # Needs to be the same as W, H of the training images
+near, far = 0.00001, 100000.0
 view_scale = 1 # 3.9
 fps = 20
 traj_frac = 25  # 4% of points
@@ -47,8 +48,10 @@ traj_length = 15
 def_pix = torch.tensor(
     np.stack(np.meshgrid(np.arange(w) + 0.5, np.arange(h) + 0.5, 1), -1).reshape(-1, 3)).cuda().float()
 pix_ones = torch.ones(h * w, 1).cuda().float()
-colormappa = cm.magma #cm.magma #cm.BuPu_r  # You can change this to cm.jet, cm.viridis, etc.
+colormappa = cm.turbo 
 
+d_near = 1.5
+d_far = 10
 
 def init_camera(y_angle=0., center_dist=10.0, cam_height=1.3, f_ratio=0.82):
     ry = y_angle * np.pi / 180
@@ -132,8 +135,6 @@ def calculate_rot_vec(scene_data, is_fg):
 
 
 def rgbd2pcd(im, depth, w2c, k, show_depth=False, project_to_cam_w_scale=None):
-    d_near = 0.9
-    d_far = 5
     invk = torch.inverse(torch.tensor(k).cuda().float())
     c2w = torch.inverse(torch.tensor(w2c).cuda().float())
     radial_depth = depth[0].reshape(-1)
@@ -178,19 +179,57 @@ def change_camera(vis, camera_positions, camera_index):
 
 def take_pictures(vis,depth,im,exp_name,output_seq):
     # Process depth
-    d_near = 2
-    d_far = 5
     new_depth = depth[0].cpu().numpy()
     mask = new_depth < d_far
     normalised_depth = (new_depth - d_near) / (d_far - d_near)
     new_cols = colormappa(normalised_depth)
     new_cols = new_cols * mask[..., None]
-    plt.imsave(f'images/{exp_name}_{output_seq}_depth.png', new_cols)
-
+    plt.imsave(f'images/{exp_name}_{output_seq}_depth.png', new_cols, cmap='turbo')
     # Save plt image
     new_im = im.permute(1,2,0).clip(0,1).cpu().numpy()
     new_im = np.where(mask[...,None]==1, new_im, np.ones_like(new_im))
     plt.imsave(f'images/{exp_name}_{output_seq}_rgb.png', new_im)
+
+
+def take_pictures_turbo(vis,depth,im,exp_name,output_seq, cam_id):
+    output_images_dir = os.path.dirname(images.__file__)
+
+    # Process depth
+    new_depth = depth[0].cpu().numpy()
+    mask = new_depth != 15
+    masked_depth = new_depth * mask
+    max_depth = np.max(masked_depth)
+    min_depth = np.min(new_depth)
+    # max_depth =  0.5
+    # min_depth =  0.25
+    print(min_depth, max_depth)
+    normalised_depth = (masked_depth - min_depth) / (max_depth - min_depth)
+    new_cols = cm.turbo(normalised_depth)
+    new_cols[:,:,3] = mask
+    plt.imsave(f'{output_images_dir}/{exp_name}_{output_seq}_{cam_id}_depth.png', new_cols)
+
+    # Save plt image
+    new_im = im.permute(1,2,0).clip(0,1).cpu().numpy()
+    new_im = np.where(mask[...,None]==1, new_im, np.ones_like(new_im))
+    plt.imsave(f'{output_images_dir}/{exp_name}_{output_seq}_{cam_id}_rgb.png', new_im)
+
+    # Save pose
+    w2c = vis.get_view_control().convert_to_pinhole_camera_parameters().extrinsic
+    print(w2c)
+    np.save(f'{output_images_dir}/{exp_name}_{output_seq}_{cam_id}_pose.npy', w2c)
+
+
+
+def plot_smoothnes_loss(vis, img, depth):
+    assert img.shape[0] == 3
+    img, depth = img.unsqueeze(0), depth.unsqueeze(0)
+    loss, smooth_x, smooth_y = utils_gaussian.edge_aware_smoothness_per_pixel(img, depth, 0)
+    plt.figure(figsize=(30,10))
+    avg_smooth = (smooth_x + smooth_y) / 2
+    plt.imshow(avg_smooth.cpu().numpy()[0][0], cmap='gray')
+    plt.colorbar()
+    plt.show()   
+
 
 
 def plot_views(vis,depth,im):
@@ -260,9 +299,9 @@ def visualize(input_seq, exp, output_seq):
 
     vis.register_key_callback(ord('A'), lambda vis: plot_views(vis, depth, im))  # Bind 'M' key to toggle mode
 
-    vis.register_key_callback(ord('P'), lambda vis: take_pictures(vis, depth, im, exp_name, output_seq))  # Bind 'M' key to toggle mode
+    vis.register_key_callback(ord('P'), lambda vis: take_pictures_turbo(vis, depth, im, exp_name, output_seq, camera_index[0]))  # Bind 'M' key to toggle mode
 
-
+    vis.register_key_callback(ord('L'), lambda vis: plot_smoothnes_loss(vis, im, depth))  # Bind 'M' key to toggle mode
 
     # w2c, k = init_camera()
     w2c, k = camera_positions[camera_index[0]]
@@ -309,6 +348,21 @@ def visualize(input_seq, exp, output_seq):
     # Accumulate all points for plotting
     pts_all = []
 
+
+    #####################################
+    # touches = np.load(f"{os.path.dirname(data.__file__)}/{input_seq}/depth_pt_cld.npz")['depth_points'][:20].reshape(-1, 3)
+    # depth_pt_cld = o3d.geometry.PointCloud()
+
+    # touches_hom = np.concatenate([touches, np.ones((len(touches), 1))], axis=1)  # (800,4)
+    # points_cam_hom = (w2c @ touches_hom.T).T # (800, 4)
+    # points_cam = points_cam_hom[:, :3]
+
+    # depth_pt_cld.points = o3d.utility.Vector3dVector(points_cam)
+    # depth_pt_cld.colors = o3d.utility.Vector3dVector(np.array([[1,0,0]]*points_cam.shape[0]))
+    # vis.add_geometry(depth_pt_cld)
+    #######################################
+
+
     while True:
         passed_time = time.time() - start_time
         passed_frames = passed_time * fps
@@ -344,6 +398,7 @@ def visualize(input_seq, exp, output_seq):
 
             if mode[0] == 'depth':
 
+
                 # Reshape the depth map to 2D for applying the colormap
                 cols_array = np.asarray(cols, dtype=np.float32)[:,0].reshape(h, w)
                 cols_array = np.clip(cols_array, 0, 1)
@@ -359,6 +414,19 @@ def visualize(input_seq, exp, output_seq):
         pcd.points = pts
         pcd.colors = cols
         vis.update_geometry(pcd)
+
+
+        ###################################3
+        # Show touches
+        # touches_hom = np.concatenate([touches, np.ones((len(touches), 1))], axis=1)  # (800,4)
+        # points_cam_hom = (w2c @ touches_hom.T).T # (800, 4)
+        # points_cam = points_cam_hom[:, :3]
+
+        # depth_pt_cld.points = o3d.utility.Vector3dVector(points_cam)
+        # depth_pt_cld.colors = o3d.utility.Vector3dVector(np.array([[1,0,0]]*points_cam.shape[0]))
+        # vis.update_geometry(depth_pt_cld)
+
+
 
         if ADDITIONAL_LINES is not None:
             if ADDITIONAL_LINES == 'trajectories':
@@ -383,16 +451,17 @@ def visualize(input_seq, exp, output_seq):
 if __name__ == "__main__":
 
     # Dataset
-    dataset_dir = "shiny-blender-3DGS"
-    # dataset_dir = "glossy-synthetic-3DGS"
+    # dataset_dir = "real"
+    # dataset_dir = "shiny-blender-3DGS"
+    dataset_dir = "glossy-synthetic-3DGS"
 
     # Input
-    obj = "teapot"
+    obj = "angel"
     input_seq = os.path.join(dataset_dir, obj)
 
     # Output
-    exp_name = "toaster_try"
-    output_seq = "toaster_colmapinit_img2"
+    exp_name = "glossy_img_smooth_touch_ratio0.04_w_3_2"
+    output_seq = "angel"
 
     # Visualise
     for sequence in [output_seq]: #, "boxes", "football", "juggle", "softball", "tennis"]:

@@ -150,6 +150,8 @@ def create_images_txt(meta, j):
         quaternion, translation = w2c_to_pose(w2c)
         # Format for COLMAP (ID, quaternion, translation, camera ID, image name)
         images_content += f"{i+1+j} {quaternion[3]} {quaternion[0]} {quaternion[1]} {quaternion[2]} {translation[0]} {translation[1]} {translation[2]} 1 {i+j}/render.png\n\n"
+        # images_content += f"{i+1+j} {quaternion[3]} {quaternion[0]} {quaternion[1]} {quaternion[2]} {translation[0]} {translation[1]} {translation[2]} 1 image_{i+j}.png\n\n"
+    
     return images_content
 
 

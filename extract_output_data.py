@@ -166,7 +166,7 @@ def extract_output_data(input_seq, exp_name, output_seq, near=0.1, far=100000.0)
 
         # Filter pointcloud: reduce the number of points
         pts_npy = np.array(pts.cpu())
-        # pts_npy = utils_data.filter_pointcloud(pts_npy, w2c, ratio_pointcloud)
+        pts_npy = utils_data.filter_pointcloud(pts_npy, w2c, ratio_pointcloud)
 
         # Accumulate pointcloud
         pts_all.extend(pts_npy)
