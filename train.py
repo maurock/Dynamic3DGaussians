@@ -282,7 +282,7 @@ def get_loss(
     
     if configs['depth_smoothness']:
         proximity_mask = 1
-        if i < 100:
+        if i < 20000:
             losses['depth_smoothness'] = 0.0
         else:
             if configs['proximity_mask'] == True:
