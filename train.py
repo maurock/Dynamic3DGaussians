@@ -259,6 +259,11 @@ def get_loss(
         depth_pt_cld=None):
     losses = {}
 
+    rendervar = params2rendervar(params)
+    rendervar['means2D'].retain_grad()
+
+    im, radius, depth, alpha = Renderer(raster_settings=curr_data['cam'], train=True)(**rendervar)
+
     # Add depth component to loss if depth point cloud is available        
     if configs['explicit_depth']:
         indices_gaussians_depth = torch.nonzero(variables['depth'])[:, 0]
@@ -277,7 +282,7 @@ def get_loss(
     
     if configs['depth_smoothness']:
         proximity_mask = 1
-        if i < 20000:
+        if i < 100:
             losses['depth_smoothness'] = 0.0
         else:
             if configs['proximity_mask'] == True:
@@ -296,10 +301,6 @@ def get_loss(
     if configs['alpha_zero_one']:
         losses['alpha_zero_one'] = utils_gaussian.alpha_zero_one(alpha)
 
-    rendervar = params2rendervar(params)
-    rendervar['means2D'].retain_grad()
-
-    im, radius, depth, alpha = Renderer(raster_settings=curr_data['cam'], train=True)(**rendervar)
 
     losses['im'] = 0.8 * l1_loss_v1(im, curr_data['im']) + 0.2 * (1.0 - calc_ssim(im, curr_data['im']))
     variables['means2D'] = rendervar['means2D']  # Gradient only accum from colour render for densification
