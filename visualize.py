@@ -16,6 +16,7 @@ import helpers
 import matplotlib.pyplot as plt
 from utils import utils_gaussian
 import images
+import argparse
 
 """
 Visualiser. This method was modified from the original code for better interactivity.
@@ -449,19 +450,36 @@ def visualize(input_seq, exp, output_seq):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--dataset_dir",
+        default='shiny-blender-3DGS',
+        type=str, help="Choose among: 'glossy-synthetic-3DGS', 'shiny-blender-3DGS', and 'real'"
+    )
+    parser.add_argument(
+        "--exp_name",
+        default='',
+        type=str, help="exp_name chosen during training in config/train.yaml"
+    )
+    parser.add_argument(
+        "--output_seq",
+        default='shiny-blender-3DGS',
+        type=str, help="output_seq chosen during training in config/train.yaml"
+    )
+    parser.add_argument(
+        "--obj",
+        default='',
+        type=str, help="Object to visualise, e.g. angel, cat, teapot, etc."
+    )
+    args = parser.parse_args()
 
-    # Dataset
-    # dataset_dir = "real"
-    # dataset_dir = "shiny-blender-3DGS"
-    dataset_dir = "glossy-synthetic-3DGS"
+    dataset_dir = args.dataset_dir
+    exp_name = args.exp_name
+    output_seq = args.output_seq
+    obj = args.obj
 
-    # Input
-    obj = "angel"
     input_seq = os.path.join(dataset_dir, obj)
 
-    # Output
-    exp_name = "glossy_img_smooth_touch_ratio0.04_w_3_2"
-    output_seq = "angel"
 
     # Visualise
     for sequence in [output_seq]: #, "boxes", "football", "juggle", "softball", "tennis"]:

@@ -243,7 +243,7 @@ def extract_mesh(
     """Method to extract mesh from Gaussian Splatting."""
 
     start = time.time()
-    occ = extract_transmittance(
+    transmittance = extract_transmittance(
         opacities,
         xyzs,
         stds,
@@ -255,10 +255,11 @@ def extract_mesh(
         relax_ratio
     ).detach().cpu().numpy()
     print(f'Extract transmittance: {time.time() - start}')
-    print(occ.mean())
+    print(transmittance.mean())
 
     start = time.time()
-    vertices, triangles = mcubes.marching_cubes(occ, density_thresh)
+    transmittance[transmittance <= density_thresh] = 0
+    vertices, triangles = mcubes.marching_cubes(transmittance, 0)
     print(f'Extract mesh: {time.time() - start}')
     vertices = vertices / (resolution - 1.0) * 2 - 1
     
